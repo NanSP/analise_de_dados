@@ -1,5 +1,17 @@
 {
+  "name": "analise_de_dados",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
   "dependencies": {
-    "@supabase/supabase-js": "^2.105.4"
+    "@supabase/supabase-js": "^2.26.0"
+  },
+  "devDependencies": {
+    "vite": "^5.1.0"
   }
 }

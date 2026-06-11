@@ -87,7 +87,7 @@ async function listarArtigos(){
 async function listarAutores(){
 
   const { data, error } = await supabase
-    .from("autor")
+    .from("authors")
     .select("*")
 
   if(error){
@@ -157,34 +157,80 @@ document
 async function importarCSV(event){
 
   const arquivo = event.target.files[0]
-
-  if(!arquivo){
-    return
-  }
+  if(!arquivo) return
 
   const texto = await arquivo.text()
+  const linhas = texto.split(/\r?\n/)
 
-  const linhas = texto.split("\n")
+  // cabeçalhos fixos (como você enviou)
+  const headers = [
+    "Authors",
+    "Author full names",
+    "Author(s) ID",
+    "Title",
+    "Year",
+    "Source title",
+    "Volume",
+    "Issue",
+    "Art. No.",
+    "Page start",
+    "Page end",
+    "Cited by",
+    "DOI",
+    "Link",
+    "Document Type",
+    "Publication Stage",
+    "Open Access",
+    "Source",
+    "EID"
+  ]
 
-  const colunas = linhas[0]
-    .trim()
-    .split(",")
+  // parser simples que respeita aspas e "" como escape
+  function parseCSVLine(line){
+    const vals = []
+    let cur = ""
+    let inQuotes = false
+    for(let i = 0; i < line.length; i++){
+      const ch = line[i]
+      if(ch === '"'){
+        if(inQuotes && line[i+1] === '"'){ // escaped quote
+          cur += '"'
+          i++
+        } else {
+          inQuotes = !inQuotes
+        }
+      } else if(ch === "," && !inQuotes){
+        vals.push(cur)
+        cur = ""
+      } else {
+        cur += ch
+      }
+    }
+    vals.push(cur)
+    return vals
+  }
 
   const dados = []
-
+  // começar em 1 para pular header real do arquivo (usamos headers fixos)
   for(let i = 1; i < linhas.length; i++){
+    const linha = linhas[i].trim()
+    if(!linha) continue
 
-    if(!linhas[i].trim()) continue
-
-    const valores = linhas[i].split(",")
+    const valores = parseCSVLine(linha)
 
     const obj = {}
-
-    colunas.forEach((coluna, index) => {
-      obj[coluna.trim()] = valores[index]?.trim()
+    headers.forEach((col, idx) => {
+      const v = valores[idx] ?? null
+      // trim e remover aspas remanescentes
+      obj[col] = typeof v === "string" ? v.trim().replace(/^"|"$/g, "") : v
     })
 
     dados.push(obj)
+  }
+
+  if(dados.length === 0){
+    alert("Nenhum registro para importar.")
+    return
   }
 
   const { error } = await supabase
@@ -197,7 +243,6 @@ async function importarCSV(event){
   }
 
   alert("CSV importado com sucesso!")
-
   listarArtigos()
 }
 
