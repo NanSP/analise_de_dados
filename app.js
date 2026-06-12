@@ -254,7 +254,13 @@ async function getOrCreateRevista(nome) {
 
 async function getOrCreateAuthor(nome) {
   if (!(await tableExists("authors"))) return null;
-  const candidates = ["nome_completo", "author_full_name", "name", "nome"];
+  const candidates = [
+    "nome_completo",
+    "author_full_name",
+    "name",
+    "nome",
+    "full_name",
+  ];
   let col = candidates.find((c) => columnExists("authors", c));
   if (!col) return null;
 
