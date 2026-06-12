@@ -271,7 +271,7 @@ async function getOrCreateAuthor(nome) {
   try {
     const ins = {};
     ins[col] = nome;
-    const r = await supabase.from("authors").insert(ins).select("id").single();
+    const r = await supabase.from("autor").insert(ins).select("id").single();
     return r.data ? r.data.id : null;
   } catch (e) {
     console.error("Erro ao inserir author", e);
