@@ -8,6 +8,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
 
 const supabase = createClient(supabaseUrl, supabaseKey);
+// (debug) não expor supabase globalmente em produção
 
 // ============================================
 // ELEMENTOS
@@ -206,7 +207,7 @@ async function importarCSV(event) {
     alert("Nenhum registro para importar.");
     return;
   }
-  // tenta normalizar e inserir nos relacionamentos do modelo lógico
+  // normaliza e insere nos relacionamentos do modelo lógico
   await normalizeAndInsert(dados);
 }
 
@@ -224,27 +225,75 @@ async function columnExists(table, column) {
   return !error;
 }
 
-async function getOrCreateRevista(nome) {
-  if (!(await tableExists("revista"))) return null;
-
-  const candidates = ["nome_revista", "name", "source_title", "source"];
-  let col = candidates.find((c) => columnExists("revista", c));
-  if (!col) return null;
-
+// tentativa segura de encontrar um registro pelo valor da coluna
+async function safeFind(table, column, value) {
+  if (!value) return null;
+  // tenta RPC genérico para evitar problemas de encoding na query string
   try {
-    const q = await supabase
-      .from("revista")
+    const r = await supabase.rpc("find_id_by_value", {
+      p_table: table,
+      p_column: column,
+      p_value: value,
+    });
+    if (r.data) return r.data;
+  } catch (e) {
+    // ignore e fallback
+  }
+  // 1) filter eq
+  try {
+    const q1 = await supabase
+      .from(table)
       .select("id")
-      .eq(col, nome)
+      .filter(column, "eq", value)
       .limit(1)
       .single();
-    if (q.data && q.data.id) return q.data.id;
+    if (q1.data && q1.data.id) return q1.data.id;
+  } catch (e) {}
+
+  // 2) match
+  try {
+    const q2 = await supabase
+      .from(table)
+      .select("id")
+      .match({ [column]: value })
+      .limit(1)
+      .single();
+    if (q2.data && q2.data.id) return q2.data.id;
+  } catch (e) {}
+
+  // 3) ilike (contains)
+  try {
+    const q3 = await supabase
+      .from(table)
+      .select("id")
+      .ilike(column, `%${value}%`)
+      .limit(1)
+      .single();
+    if (q3.data && q3.data.id) return q3.data.id;
+  } catch (e) {}
+
+  return null;
+}
+
+async function getOrCreateRevista(nome) {
+  if (!(await tableExists("revista"))) return null;
+  const nameCol = (await columnExists("revista", "nome_revista"))
+    ? "nome_revista"
+    : null;
+  if (!nameCol) return null;
+
+  // tentativa segura para evitar 406: filter -> match -> ilike
+  try {
+    const id = await safeFind("revista", nameCol, nome);
+    if (id) return id;
   } catch (e) {}
 
   try {
-    const ins = {};
-    ins[col] = nome;
-    const r = await supabase.from("revista").insert(ins).select("id").single();
+    const r = await supabase
+      .from("revista")
+      .insert({ [nameCol]: nome })
+      .select("id")
+      .single();
     return r.data ? r.data.id : null;
   } catch (e) {
     console.error("Erro ao inserir revista", e);
@@ -253,65 +302,67 @@ async function getOrCreateRevista(nome) {
 }
 
 async function getOrCreateAuthor(nome) {
-  if (!(await tableExists("authors"))) return null;
-  const candidates = [
-    "nome_completo",
-    "author_full_name",
-    "name",
-    "nome",
-    "full_name",
-  ];
-  let col = candidates.find((c) => columnExists("authors", c));
-  if (!col) return null;
-
+  if (!(await tableExists("autor"))) return null;
+  const col = (await columnExists("autor", "nome")) ? "nome" : "nome_completo";
   try {
-    const q = await supabase
-      .from("authors")
-      .select("id")
-      .eq(col, nome)
-      .limit(1)
-      .single();
-    if (q.data && q.data.id) return q.data.id;
+    const id = await safeFind("autor", col, nome);
+    if (id) return id;
   } catch (e) {}
 
   try {
-    const ins = {};
-    ins[col] = nome;
+    const ins = { nome: nome, nome_completo: nome };
     const r = await supabase.from("autor").insert(ins).select("id").single();
     return r.data ? r.data.id : null;
   } catch (e) {
-    console.error("Erro ao inserir author", e);
+    console.error("Erro ao inserir autor", e);
     return null;
   }
 }
 
 async function getOrCreateIndexKeyword(keyword) {
   if (!(await tableExists("index_keyword"))) return null;
-  const candidates = ["index_keyword", "keyword", "name"];
-  let col = candidates.find((c) => columnExists("index_keyword", c));
+  const col = (await columnExists("index_keyword", "index_keyword"))
+    ? "index_keyword"
+    : null;
   if (!col) return null;
-
   try {
-    const q = await supabase
-      .from("index_keyword")
-      .select("id")
-      .eq(col, keyword)
-      .limit(1)
-      .single();
-    if (q.data && q.data.id) return q.data.id;
+    const id = await safeFind("index_keyword", col, keyword);
+    if (id) return id;
   } catch (e) {}
 
   try {
-    const ins = {};
-    ins[col] = keyword;
     const r = await supabase
       .from("index_keyword")
-      .insert(ins)
+      .insert({ [col]: keyword })
       .select("id")
       .single();
     return r.data ? r.data.id : null;
   } catch (e) {
     console.error("Erro ao inserir index_keyword", e);
+    return null;
+  }
+}
+
+async function getOrCreateAutorKeyword(keyword) {
+  if (!(await tableExists("autor_keywords"))) return null;
+  const col = (await columnExists("autor_keywords", "autor_keyword"))
+    ? "autor_keyword"
+    : null;
+  if (!col) return null;
+  try {
+    const id = await safeFind("autor_keywords", col, keyword);
+    if (id) return id;
+  } catch (e) {}
+
+  try {
+    const r = await supabase
+      .from("autor_keywords")
+      .insert({ [col]: keyword })
+      .select("id")
+      .single();
+    return r.data ? r.data.id : null;
+  } catch (e) {
+    console.error("Erro ao inserir autor_keyword", e);
     return null;
   }
 }
@@ -327,6 +378,8 @@ async function tryInsertArtigo(artigoObj) {
       .single();
     return { id: r.data ? r.data.id : null };
   } catch (e) {
+    console.error("Erro insert artigo:", e);
+    if (e && e.response) console.error("Response body:", e.response);
     return { id: null, error: e };
   }
 }
@@ -341,44 +394,93 @@ async function normalizeAndInsert(dados) {
     errors: [],
   };
 
+  // caches para reduzir queries repetidas durante import
+  const cache = {
+    revista: new Map(),
+    autor: new Map(),
+    index_keyword: new Map(),
+    autor_keywords: new Map(),
+  };
+
+  async function getCachedOrCreateRevista(nome) {
+    if (!nome) return null;
+    if (cache.revista.has(nome)) return cache.revista.get(nome);
+    const id = await getOrCreateRevista(nome);
+    cache.revista.set(nome, id);
+    return id;
+  }
+
+  async function getCachedOrCreateAuthor(nome) {
+    if (!nome) return null;
+    if (cache.autor.has(nome)) return cache.autor.get(nome);
+    const id = await getOrCreateAuthor(nome);
+    cache.autor.set(nome, id);
+    return id;
+  }
+
+  async function getCachedOrCreateIndexKeyword(nome) {
+    if (!nome) return null;
+    if (cache.index_keyword.has(nome)) return cache.index_keyword.get(nome);
+    const id = await getOrCreateIndexKeyword(nome);
+    cache.index_keyword.set(nome, id);
+    return id;
+  }
+
+  async function getCachedOrCreateAutorKeyword(nome) {
+    if (!nome) return null;
+    if (cache.autor_keywords.has(nome)) return cache.autor_keywords.get(nome);
+    const id = await getOrCreateAutorKeyword(nome);
+    cache.autor_keywords.set(nome, id);
+    return id;
+  }
+
   for (const row of dados) {
     try {
-      const title = row["Title"] ?? row["Titulo"] ?? row["title"] ?? null;
-      const year = row["Year"] ?? row["Ano"] ?? null;
+      const title =
+        row["Title"] ?? row["Titulo"] ?? row["title"] ?? row["TITLE"] ?? null;
+      const year =
+        parseInt(row["Year"] ?? row["Ano"] ?? row["year"] ?? "") || null;
       const sourceTitle =
         row["Source title"] ?? row["Source"] ?? row["source"] ?? null;
       const doi = row["DOI"] ?? null;
       const link = row["Link"] ?? row["link"] ?? null;
-      const referencias = row["References"] ?? row["Referencias"] ?? null;
+      const referencias =
+        row["References"] ??
+        row["Referencias"] ??
+        row["References list"] ??
+        null;
       const issn = row["ISSN"] ?? null;
       const isbn = row["ISBN"] ?? null;
       const coden = row["CODEN"] ?? null;
       const linguagem =
         row["Language of Original Document"] ??
         row["Linguagem_Original"] ??
+        row["Language"] ??
         null;
-      const qt_citacao = row["Cited by"] ?? row["cited by"] ?? null;
-      const abstract = row["Abstract"] ?? null;
+      const qt_citacao =
+        parseInt(
+          row["Cited by"] ?? row["cited by"] ?? row["Citations"] ?? "",
+        ) || 0;
 
-      // criar/obter revista
+      // criar/obter revista (usando cache)
       const id_revista = sourceTitle
-        ? await getOrCreateRevista(sourceTitle)
+        ? await getCachedOrCreateRevista(sourceTitle)
         : null;
       if (id_revista) resumo.revistas++;
 
-      // montar objeto artigo (usa nomes de colunas que provavelmente existem)
+      // montar objeto artigo com os nomes de colunas corretos do seu schema
       const artigoObj = {
-        Titulo: titulo,
-        Ano: ano,
-        DOI: doi,
-        Link: link,
-        Referencias: referencias,
-        ISSN: issn,
-        ISBN: isbn,
-        CODEN: coden,
-        Linguagem_Original: linguagem,
+        titulo: title,
+        ano: year,
+        link: link,
+        referencias: referencias,
+        tipo_documento:
+          row["Document Type"] ?? row["Tipo de Documento"] ?? null,
+        issn: issn,
+        isbn: isbn,
+        coden: coden,
+        linguagem_original: linguagem,
         qt_citacao: qt_citacao,
-        Abstract: abstract,
         id_revista: id_revista,
       };
 
@@ -392,20 +494,21 @@ async function normalizeAndInsert(dados) {
 
       // autores
       const authorsField =
-        row["Author full names"] ??
-        row["Authors"] ??
-        row["Author(s) ID"] ??
-        null;
+        row["Authors"] ?? row["Author"] ?? row["Author full names"] ?? null;
+      let firstAuthorId = null;
       if (authorsField) {
         const names = authorsField
-          .split(/;|,/)
+          .split(/;|\||,/)
           .map((s) => s.trim())
           .filter(Boolean);
-        for (const name of names) {
-          const id_autor = await getOrCreateAuthor(name);
-          if (id_autor) resumo.autores++;
-          // inserir junction artigo_autor se tabela existir
-          if (await tableExists("artigo_autor")) {
+        for (const [i, name] of names.entries()) {
+          const id_autor = await getCachedOrCreateAuthor(name);
+          if (id_autor) {
+            resumo.autores++;
+            if (!firstAuthorId) firstAuthorId = id_autor;
+          }
+          // inserir junction artigo_autor
+          if ((await tableExists("artigo_autor")) && id_autor && id_artigo) {
             try {
               await supabase
                 .from("artigo_autor")
@@ -413,15 +516,29 @@ async function normalizeAndInsert(dados) {
               resumo.junctions++;
             } catch (e) {
               console.warn("erro artigo_autor", e);
+              console.warn("payload", { id_artigo, id_autor });
             }
           }
         }
       }
 
+      // define id_autor (representante) no artigo como o primeiro autor, se houver
+      if (firstAuthorId && id_artigo) {
+        try {
+          await supabase
+            .from("artigo")
+            .update({ id_autor: firstAuthorId })
+            .eq("id", id_artigo);
+        } catch (e) {
+          console.warn("erro atualizando id_autor no artigo", e);
+        }
+      }
+
       // index keywords
+      // Index keywords e Author keywords: para o schema atual, salvamos o primeiro de cada
       const indexField =
         row["Index Keywords"] ??
-        row["Author Keywords"] ??
+        row["Index Keywords"] ??
         row["Author Keywords"] ??
         null;
       if (indexField) {
@@ -429,19 +546,54 @@ async function normalizeAndInsert(dados) {
           .split(/;|,/)
           .map((s) => s.trim())
           .filter(Boolean);
-        for (const kw of kws) {
-          const id_kw = await getOrCreateIndexKeyword(kw);
-          if (id_kw) resumo.keywords++;
-          if (await tableExists("artigo_index_keyword")) {
+        if (kws.length && id_artigo) {
+          const id_kw = await getCachedOrCreateIndexKeyword(kws[0]);
+          if (id_kw) {
+            resumo.keywords++;
             try {
               await supabase
-                .from("artigo_index_keyword")
-                .insert({ id_artigo: id_artigo, id_index_keyword: id_kw });
-              resumo.junctions++;
+                .from("artigo")
+                .update({ id_index_keyword: id_kw })
+                .eq("id", id_artigo);
             } catch (e) {
-              console.warn("erro artigo_index_keyword", e);
+              console.warn("erro atualizando id_index_keyword no artigo", e);
             }
           }
+        }
+      }
+
+      const authorKeywordsField =
+        row["Author Keywords"] ?? row["Author Keywords"] ?? null;
+      if (authorKeywordsField && id_artigo) {
+        const aks = authorKeywordsField
+          .split(/;|,/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (aks.length) {
+          const id_ak = await getCachedOrCreateAutorKeyword(aks[0]);
+          if (id_ak) {
+            resumo.keywords++;
+            try {
+              await supabase
+                .from("artigo")
+                .update({ id_autor_keyword: id_ak })
+                .eq("id", id_artigo);
+            } catch (e) {
+              console.warn("erro atualizando id_autor_keyword no artigo", e);
+            }
+          }
+        }
+      }
+
+      // criar entrada em artigo_revista se a tabela existir
+      if (id_revista && (await tableExists("artigo_revista")) && id_artigo) {
+        try {
+          await supabase
+            .from("artigo_revista")
+            .insert({ id_artigo: id_artigo, id_revista: id_revista });
+          resumo.junctions++;
+        } catch (e) {
+          console.warn("erro artigo_revista", e);
         }
       }
     } catch (e) {
