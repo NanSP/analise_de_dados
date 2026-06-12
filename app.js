@@ -158,37 +158,6 @@ async function importarCSV(event) {
     typeof h === "string" ? h.trim().replace(/^"|"$/g, "") : h,
   );
 
-  const requiredHeaders = [
-    "Authors",
-    "Author full names",
-    "Author(s) ID",
-    "Title",
-    "Year",
-    "Source title",
-    "Cited by",
-    "DOI",
-    "Link",
-    "Abstract",
-    "Author Keywords",
-    "Index Keywords",
-    "References",
-    "ISSN",
-    "ISBN",
-    "CODEN",
-    "Language of Original Document",
-    "Document Type",
-    "Open Access",
-    "Source",
-  ];
-
-  const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
-  if (missingHeaders.length > 0) {
-    alert(
-      `Cabeçalhos obrigatórios ausentes no CSV:\n${missingHeaders.join("\n")}`,
-    );
-    return;
-  }
-
   // parser simples que respeita aspas e "" como escape
   function parseCSVLine(line) {
     const vals = [];
