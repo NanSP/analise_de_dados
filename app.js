@@ -225,6 +225,52 @@ async function columnExists(table, column) {
   return !error;
 }
 
+// cache de colunas por tabela para reduzir consultas repetidas
+const tableColumnsCache = new Map();
+
+// insere em qualquer tabela após sanitizar campos com base nas colunas existentes
+async function sanitizeAndInsert(table, payload) {
+  if (!(await tableExists(table)))
+    return { error: `Tabela ${table} não existe` };
+  try {
+    if (!tableColumnsCache.has(table)) {
+      const cols = new Set();
+      for (const k of Object.keys(payload)) {
+        try {
+          if (await columnExists(table, k)) cols.add(k);
+        } catch (e) {
+          // ignore
+        }
+      }
+      tableColumnsCache.set(table, cols);
+    }
+
+    const allowed = tableColumnsCache.get(table);
+    const sanitized = {};
+    for (const [k, v] of Object.entries(payload)) {
+      if (allowed.has(k)) sanitized[k] = v;
+      else console.debug(`Removendo campo não mapeado de ${table}: ${k}`);
+    }
+    if (Object.keys(sanitized).length === 0)
+      return { error: "Nenhum campo válido para inserir" };
+
+    const r = await supabase.from(table).insert(sanitized);
+    if (r.error) {
+      console.error(
+        `Supabase error insert ${table}:`,
+        r.error,
+        "payload:",
+        sanitized,
+      );
+      return { error: r.error };
+    }
+    return { data: r.data };
+  } catch (e) {
+    console.error(`Erro sanitizeAndInsert ${table}:`, e);
+    return { error: e };
+  }
+}
+
 // tentativa segura de encontrar um registro pelo valor da coluna
 async function safeFind(table, column, value) {
   if (!value) return null;
@@ -370,12 +416,42 @@ async function getOrCreateAutorKeyword(keyword) {
 async function tryInsertArtigo(artigoObj) {
   if (!(await tableExists("artigo")))
     return { id: null, error: "Tabela artigo não existe" };
+  // sanitizar payload: manter apenas colunas existentes na tabela artigo
   try {
+    if (!tableColumnsCache.has("artigo")) {
+      const cols = new Set();
+      for (const k of Object.keys(artigoObj)) {
+        try {
+          if (await columnExists("artigo", k)) cols.add(k);
+        } catch (e) {
+          // ignore
+        }
+      }
+      tableColumnsCache.set("artigo", cols);
+    }
+    const allowed = tableColumnsCache.get("artigo");
+    const sanitized = {};
+    for (const [k, v] of Object.entries(artigoObj)) {
+      if (allowed.has(k)) sanitized[k] = v;
+      else console.debug(`Removendo campo não mapeado de artigo: ${k}`);
+    }
+    if (Object.keys(sanitized).length === 0)
+      return { id: null, error: "Nenhum campo válido para inserir em artigo" };
+    artigoObj = sanitized;
+  } catch (e) {
+    console.warn("Falha ao sanitizar payload artigo:", e);
+  }
+  try {
+    console.debug("Inserindo artigo:", artigoObj);
     const r = await supabase
       .from("artigo")
       .insert(artigoObj)
       .select("id")
       .single();
+    if (r.error) {
+      console.error("Supabase returned error on insert artigo:", r.error);
+      return { id: null, error: r.error };
+    }
     return { id: r.data ? r.data.id : null };
   } catch (e) {
     console.error("Erro insert artigo:", e);
@@ -510,10 +586,16 @@ async function normalizeAndInsert(dados) {
           // inserir junction artigo_autor
           if ((await tableExists("artigo_autor")) && id_autor && id_artigo) {
             try {
-              await supabase
-                .from("artigo_autor")
-                .insert({ id_artigo: id_artigo, id_autor: id_autor });
-              resumo.junctions++;
+              const resAA = await sanitizeAndInsert("artigo_autor", {
+                id_artigo: id_artigo,
+                id_autor: id_autor,
+              });
+              if (resAA && resAA.error) {
+                console.warn("erro artigo_autor", resAA.error);
+                console.warn("payload", { id_artigo, id_autor });
+              } else {
+                resumo.junctions++;
+              }
             } catch (e) {
               console.warn("erro artigo_autor", e);
               console.warn("payload", { id_artigo, id_autor });
@@ -588,10 +670,16 @@ async function normalizeAndInsert(dados) {
       // criar entrada em artigo_revista se a tabela existir
       if (id_revista && (await tableExists("artigo_revista")) && id_artigo) {
         try {
-          await supabase
-            .from("artigo_revista")
-            .insert({ id_artigo: id_artigo, id_revista: id_revista });
-          resumo.junctions++;
+          const resAR = await sanitizeAndInsert("artigo_revista", {
+            id_artigo: id_artigo,
+            id_revista: id_revista,
+          });
+          if (resAR && resAR.error) {
+            console.warn("erro artigo_revista", resAR.error);
+            console.warn("payload", { id_artigo, id_revista });
+          } else {
+            resumo.junctions++;
+          }
         } catch (e) {
           console.warn("erro artigo_revista", e);
         }
