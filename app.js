@@ -77,7 +77,7 @@ async function listarArtigos() {
 // ============================================
 
 async function listarAutores() {
-  const { data, error } = await supabase.from("authors").select("*");
+  const { data, error } = await supabase.from("autor").select("*");
 
   if (error) {
     alert(error.message);
