@@ -362,8 +362,8 @@ async function normalizeAndInsert(dados) {
 
       // montar objeto artigo (usa nomes de colunas que provavelmente existem)
       const artigoObj = {
-        Titulo: title,
-        Ano: year,
+        Titulo: titulo,
+        Ano: ano,
         DOI: doi,
         Link: link,
         Referencias: referencias,
