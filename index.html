@@ -1,56 +1,43 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Sistema Acadêmico</title>
+    <title>Sistema Acadêmico</title>
 
-  <link rel="stylesheet" href="style.css">
-</head>
+    <link rel="stylesheet" href="style.css" />
+  </head>
 
-<body>
+  <body>
+    <h1>Gerenciador Acadêmico</h1>
 
-  <h1>Gerenciador Acadêmico</h1>
+    <div class="buttons">
+      <button id="btnArtigos">Artigos</button>
 
-  <div class="buttons">
+      <button id="btnKeywords">Palavras-chave</button>
 
-    <button id="btnArtigos">
-      Artigos
-    </button>
+      <button id="btnAutores">Autores</button>
 
-    <button id="btnKeywords">
-      Palavras-chave
-    </button>
+      <button id="btnReferencias">Referências</button>
+        <button id="btnIssnIsbn">
+          ISSN / ISBN
+        </button>
 
-    <button id="btnAutores">
-      Autores
-    </button>
+      <button class="success" id="btnUpload">Carregar Dados CSV</button>
 
-    <button id="btnReferencias">
-      Referências
-    </button>
+      <button class="danger" id="btnLimpar">Limpar Dados</button>
+    </div>
 
-    <button class="success" id="btnUpload">
-      Carregar Dados CSV
-    </button>
+    <input type="file" id="fileInput" accept=".csv" />
 
-    <button class="danger" id="btnLimpar">
-      Limpar Dados
-    </button>
+    <div class="info" id="info"></div>
 
-  </div>
+    <table>
+      <thead id="thead"></thead>
+      <tbody id="tbody"></tbody>
+    </table>
 
-  <input type="file" id="fileInput" accept=".csv">
-
-  <div class="info" id="info"></div>
-
-  <table>
-    <thead id="thead"></thead>
-    <tbody id="tbody"></tbody>
-  </table>
-
-  <script type="module" src="/app.js"></script>
-
-</body>
+    <script type="module" src="/app.js"></script>
+  </body>
 </html>
