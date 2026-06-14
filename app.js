@@ -839,7 +839,9 @@ async function listarIssnIsbn() {
   }
 }
 
-document.getElementById("btnIssnIsbn").addEventListener("click", listarIssnIsbn);
+document
+  .getElementById("btnIssnIsbn")
+  .addEventListener("click", listarIssnIsbn);
 
 document.getElementById("btnLimpar").addEventListener("click", limparTabela);
 
