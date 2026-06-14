@@ -752,6 +752,35 @@ async function normalizeAndInsert(dados) {
 // EVENTOS
 // ============================================
 
+function setButtonsEnabled(enabled) {
+  const ids = [
+    "btnArtigos",
+    "btnAutores",
+    "btnKeywords",
+    "btnReferencias",
+    "btnLimpar",
+  ];
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !enabled;
+  });
+}
+
+async function checkSupabaseConnection() {
+  try {
+    // tentativa simples para verificar disponibilidade e auth
+    const r = await supabase.from("artigo").select("id").limit(1);
+    if (r && r.error) throw r.error;
+    info.innerText = "Conexão com Supabase OK";
+    setButtonsEnabled(true);
+  } catch (e) {
+    console.warn("Falha conexão Supabase:", e);
+    info.innerText =
+      "Erro de conexão com Supabase — os botões de consulta foram desativados.";
+    setButtonsEnabled(false);
+  }
+}
+
 document.getElementById("btnArtigos").addEventListener("click", listarArtigos);
 
 document.getElementById("btnAutores").addEventListener("click", listarAutores);
@@ -769,3 +798,6 @@ document.getElementById("btnLimpar").addEventListener("click", limparTabela);
 document.getElementById("btnUpload").addEventListener("click", () => {
   document.getElementById("fileInput").click();
 });
+
+// verificar conexão ao carregar
+checkSupabaseConnection();
