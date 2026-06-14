@@ -793,6 +793,54 @@ document
   .getElementById("btnReferencias")
   .addEventListener("click", listarReferencias);
 
+// listar issn + isbn unidos
+async function listarIssnIsbn() {
+  // verificar se a tabela artigo existe
+  if (!(await tableExists("artigo"))) {
+    alert("Tabela 'artigo' não existe.");
+    return;
+  }
+
+  // selecionar apenas issn e isbn (se existirem) e montar uma coluna combinada
+  try {
+    // usar select raw para concatenar se o servidor permitir
+    const cols = [];
+    if (await columnExists("artigo", "issn")) cols.push("issn");
+    if (await columnExists("artigo", "isbn")) cols.push("isbn");
+
+    if (cols.length === 0) {
+      alert("Nem 'issn' nem 'isbn' existem na tabela 'artigo'.");
+      return;
+    }
+
+    const selectCols = cols.join(",");
+    const { data, error } = await supabase
+      .from("artigo")
+      .select(selectCols)
+      .limit(1000);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    // transformar cada linha em { identificador: 'ISSN / ISBN' }
+    const out = data.map((r) => {
+      const i = r.issn || "";
+      const b = r.isbn || "";
+      const combined = [i, b].filter(Boolean).join(" / ");
+      return { issn_isbn: combined };
+    });
+
+    criarTabela(out);
+  } catch (e) {
+    console.error("Erro listarIssnIsbn:", e);
+    alert("Erro ao gerar lista ISSN/ISBN");
+  }
+}
+
+document.getElementById("btnIssnIsbn").addEventListener("click", listarIssnIsbn);
+
 document.getElementById("btnLimpar").addEventListener("click", limparTabela);
 
 document.getElementById("btnUpload").addEventListener("click", () => {
