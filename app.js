@@ -812,13 +812,17 @@ async function preencherDoiVazios() {
   }
 
   if (!(await columnExists("artigo", "doi"))) {
-    alert("Coluna 'doi' não existe na tabela 'artigo'. Execute sql/add_column_doi.sql primeiro.");
+    alert(
+      "Coluna 'doi' não existe na tabela 'artigo'. Execute sql/add_column_doi.sql primeiro.",
+    );
     return;
   }
 
   if (requireConfirm) {
     // não executar sem confirmação explícita (a UI deve chamar com skipConfirm)
-    alert("A ação de preenchimento não é executada diretamente. Use o botão de confirmação gerado na interface.");
+    alert(
+      "A ação de preenchimento não é executada diretamente. Use o botão de confirmação gerado na interface.",
+    );
     return;
   }
 
@@ -876,7 +880,9 @@ async function showCountDoi() {
   }
 
   if (!(await columnExists("artigo", "doi"))) {
-    alert("Coluna 'doi' não existe na tabela 'artigo'. Execute sql/add_column_doi.sql primeiro.");
+    alert(
+      "Coluna 'doi' não existe na tabela 'artigo'. Execute sql/add_column_doi.sql primeiro.",
+    );
     return;
   }
 
