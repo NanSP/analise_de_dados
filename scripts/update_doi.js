@@ -20,7 +20,10 @@ async function loadDotEnvIfExists() {
       const key = line.slice(0, idx).trim();
       let val = line.slice(idx + 1).trim();
       // remover aspas
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
         val = val.slice(1, -1);
       }
       // preservar variáveis já definidas no ambiente
@@ -34,8 +37,11 @@ async function loadDotEnvIfExists() {
 await loadDotEnvIfExists();
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE =
-  (process.env.SUPABASE_SERVICE_ROLE || process.env.VITE_SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE)?.trim();
+const SUPABASE_SERVICE_ROLE = (
+  process.env.SUPABASE_SERVICE_ROLE ||
+  process.env.VITE_SUPABASE_SERVICE_ROLE ||
+  process.env.SUPABASE_SERVICE_ROLE
+)?.trim();
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE) {
   console.error("Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE no ambiente");
@@ -171,7 +177,10 @@ async function findArticleIdByRow(row) {
   // tentativa fuzzy: buscar candidatos via ilike (baseado na primeira palavra do título)
   if (FUZZY_ENABLED) {
     try {
-      const firstWord = (title.split(" ")[0] || title).replace(/[^a-zA-Z0-9]/g, "");
+      const firstWord = (title.split(" ")[0] || title).replace(
+        /[^a-zA-Z0-9]/g,
+        "",
+      );
       const q3 = await supabase
         .from("artigo")
         .select("id, titulo")
@@ -188,7 +197,9 @@ async function findArticleIdByRow(row) {
           }
         }
         if (best && bestScore >= FUZZY_THRESHOLD) {
-          console.log(`Fuzzy match: "${title}" => id=${best.id} (score=${bestScore.toFixed(3)})`);
+          console.log(
+            `Fuzzy match: "${title}" => id=${best.id} (score=${bestScore.toFixed(3)})`,
+          );
           return best.id;
         }
       }

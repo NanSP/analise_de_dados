@@ -849,5 +849,127 @@ document.getElementById("btnUpload").addEventListener("click", () => {
   document.getElementById("fileInput").click();
 });
 
+// ============================================
+// PREENCHER DOIs NULOS
+// ============================================
+async function preencherDoiVazios() {
+  // a função agora aceita um objeto de opções para permitir execução via confirmação
+  const opts = arguments[0] || {};
+  const requireConfirm = !opts.skipConfirm;
+
+  if (!(await tableExists("artigo"))) {
+    alert("Tabela 'artigo' não existe.");
+    return;
+  }
+
+  if (!(await columnExists("artigo", "doi"))) {
+    alert("Coluna 'doi' não existe na tabela 'artigo'. Execute sql/add_column_doi.sql primeiro.");
+    return;
+  }
+
+  if (requireConfirm) {
+    // não executar sem confirmação explícita (a UI deve chamar com skipConfirm)
+    alert("A ação de preenchimento não é executada diretamente. Use o botão de confirmação gerado na interface.");
+    return;
+  }
+
+  try {
+    const lote = 500;
+    let offset = 0;
+    let totalUpdated = 0;
+
+    while (true) {
+      const start = offset;
+      const end = offset + lote - 1;
+      const { data, error } = await supabase
+        .from("artigo")
+        .select("id")
+        .is("doi", null)
+        .range(start, end);
+
+      if (error) {
+        alert(`Erro ao buscar artigos com doi nulo: ${error.message}`);
+        return;
+      }
+
+      if (!data || data.length === 0) break;
+
+      for (const row of data) {
+        try {
+          const u = await supabase
+            .from("artigo")
+            .update({ doi: "sem dados" })
+            .eq("id", row.id);
+          if (u.error) console.warn("Erro atualizando id", row.id, u.error);
+          else totalUpdated++;
+        } catch (e) {
+          console.warn("Erro atualizando doi para id", row.id, e);
+        }
+      }
+
+      if (data.length < lote) break;
+      offset += lote;
+    }
+
+    alert(`Atualização finalizada. Registros atualizados: ${totalUpdated}`);
+    listarArtigos();
+  } catch (e) {
+    console.error("Erro em preencherDoiVazios:", e);
+    alert("Erro ao preencher DOIs vazios. Veja console para detalhes.");
+  }
+}
+
+// não executa atualização diretamente: apenas mostra contagem e cria botão de confirmação
+async function showCountDoi() {
+  if (!(await tableExists("artigo"))) {
+    alert("Tabela 'artigo' não existe.");
+    return;
+  }
+
+  if (!(await columnExists("artigo", "doi"))) {
+    alert("Coluna 'doi' não existe na tabela 'artigo'. Execute sql/add_column_doi.sql primeiro.");
+    return;
+  }
+
+  try {
+    const res = await supabase
+      .from("artigo")
+      .select("id", { count: "exact", head: false })
+      .is("doi", null)
+      .limit(1);
+
+    if (res.error) {
+      alert(`Erro ao contar artigos com doi nulo: ${res.error.message}`);
+      return;
+    }
+
+    const count = res.count ?? (Array.isArray(res.data) ? res.data.length : 0);
+    info.innerText = `Registros com doi NULL: ${count}`;
+
+    // remover botão de confirmação existente, se houver
+    const existing = document.getElementById("btnConfirmFillDoi");
+    if (existing) existing.remove();
+
+    if (count > 0) {
+      const btn = document.createElement("button");
+      btn.id = "btnConfirmFillDoi";
+      btn.className = "danger";
+      btn.textContent = "Confirmar preencher DOI vazios";
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        await preencherDoiVazios({ skipConfirm: true });
+        btn.remove();
+      });
+      const container = document.querySelector(".buttons") || document.body;
+      container.appendChild(btn);
+    }
+  } catch (e) {
+    console.error("Erro ao contar DOIs nulos:", e);
+    alert("Erro ao verificar DOIs nulos. Veja console para detalhes.");
+  }
+}
+
+document.getElementById("btnFillDoi").addEventListener("click", showCountDoi);
+
 // verificar conexão ao carregar
 checkSupabaseConnection();
