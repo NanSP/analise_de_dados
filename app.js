@@ -80,7 +80,12 @@ function showMenuView() {
     if (btnVoltar) buttonsDiv.insertBefore(btnVoltar, buttonsDiv.firstChild);
     buttonsDiv.style.display = "flex";
   }
-  if (btnVoltar && headerInner && headerInner.contains(btnVoltar) && buttonsDiv) {
+  if (
+    btnVoltar &&
+    headerInner &&
+    headerInner.contains(btnVoltar) &&
+    buttonsDiv
+  ) {
     // garantir que o botão esteja visível apenas no menu quando apropriado
     btnVoltar.style.display = "none";
   } else if (btnVoltar) {
