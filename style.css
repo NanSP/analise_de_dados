@@ -22,7 +22,6 @@ body {
   color: #263044;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  display: flex;
   justify-content: center;
 }
 
@@ -33,12 +32,44 @@ h1 {
   letter-spacing: -0.4px;
 }
 
+/* Cabeçalho do site */
+.site-header {
+  width: 100%;
+  max-width: 1200px;
+  margin-bottom: 18px;
+}
+
+.header-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+/* botão de voltar ao menu */
+#btnVoltar {
+  display: none;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #64748b, #334155);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+}
+
+#btnVoltar:hover {
+  filter: brightness(1.05);
+}
+
 .buttons {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
   margin-bottom: 18px;
-  align-items: center;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 6px;
 }
 
 button {
@@ -110,11 +141,12 @@ button:focus-visible {
 @media (max-width: 640px) {
   .buttons {
     gap: 12px;
+    overflow-x: auto;
   }
 
   button {
-    width: 100%;
-    justify-content: center;
+    width: auto;
+    white-space: nowrap;
   }
 }
 
