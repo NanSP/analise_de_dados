@@ -17,6 +17,9 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const thead = document.getElementById("thead");
 const tbody = document.getElementById("tbody");
 const info = document.getElementById("info");
+const btnVoltar = document.getElementById("btnVoltar");
+const buttonsDiv = document.querySelector(".buttons");
+const headerInner = document.querySelector(".header-inner");
 
 // ============================================
 // CRIAR TABELA
@@ -58,19 +61,60 @@ function criarTabela(dados) {
   });
 }
 
+// Mostrar/esconder menu e conteúdo
+function showContentView() {
+  // esconder painel de botões e levar o botão "Voltar" para o header
+  if (buttonsDiv) buttonsDiv.style.display = "none";
+  if (btnVoltar && headerInner) {
+    headerInner.appendChild(btnVoltar);
+    btnVoltar.style.display = "inline-block";
+  } else if (btnVoltar) {
+    btnVoltar.style.display = "inline-block";
+  }
+}
+
+function showMenuView() {
+  // devolver o botão "Voltar" para o container de botões e mostrar o menu
+  if (buttonsDiv) {
+    // inserir como primeiro filho para manter a ordem anterior
+    if (btnVoltar) buttonsDiv.insertBefore(btnVoltar, buttonsDiv.firstChild);
+    buttonsDiv.style.display = "flex";
+  }
+  if (btnVoltar && headerInner && headerInner.contains(btnVoltar) && buttonsDiv) {
+    // garantir que o botão esteja visível apenas no menu quando apropriado
+    btnVoltar.style.display = "none";
+  } else if (btnVoltar) {
+    btnVoltar.style.display = "none";
+  }
+  limparTabela();
+}
+
 // ============================================
 // ARTIGOS
 // ============================================
 
 async function listarArtigos() {
-  const { data, error } = await supabase.from("artigo").select("*");
+  try {
+    info.innerText = "Buscando artigos...";
+    const res = await supabase.from("artigo").select("*");
+    const { data, error } = res;
 
-  if (error) {
-    alert(error.message);
-    return;
+    if (error) {
+      console.error("Erro listarArtigos:", error);
+      alert("Erro ao buscar artigos: " + (error.message || error));
+      info.innerText = "Erro ao buscar artigos.";
+      return;
+    }
+
+    criarTabela(data);
+    // mostrar botão de voltar apenas se houver registros
+    if (Array.isArray(data) && data.length > 0) showContentView();
+    else info.innerText = "Nenhum artigo encontrado.";
+  } catch (e) {
+    console.error("Exceção listarArtigos:", e);
+    alert("Erro inesperado ao listar artigos. Veja console.");
+    info.innerText = "Erro inesperado ao buscar artigos.";
   }
-
-  criarTabela(data);
 }
 
 // ============================================
@@ -86,6 +130,7 @@ async function listarAutores() {
   }
 
   criarTabela(data);
+  showContentView();
 }
 
 // ============================================
@@ -101,6 +146,7 @@ async function listarKeywords() {
   }
 
   criarTabela(data);
+  showContentView();
 }
 
 // ============================================
@@ -116,6 +162,7 @@ async function listarReferencias() {
   }
 
   criarTabela(data);
+  showContentView();
 }
 
 // ============================================
@@ -782,6 +829,7 @@ async function listarIssnIsbn() {
     });
 
     criarTabela(out);
+    showContentView();
   } catch (e) {
     console.error("Erro listarIssnIsbn:", e);
     alert("Erro ao gerar lista ISSN/ISBN");
@@ -791,6 +839,8 @@ async function listarIssnIsbn() {
 document
   .getElementById("btnIssnIsbn")
   .addEventListener("click", listarIssnIsbn);
+
+if (btnVoltar) btnVoltar.addEventListener("click", showMenuView);
 
 document.getElementById("btnLimpar").addEventListener("click", limparTabela);
 
