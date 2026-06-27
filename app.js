@@ -923,7 +923,7 @@ async function safeFind(table, column, value) {
     const q1 = await supabase
       .from(table)
       .select("id")
-      .filter(column, "eq", value)
+      .eq(column, value)
       .limit(1)
       .single();
     if (q1.data && q1.data.id) return q1.data.id;
@@ -1049,11 +1049,26 @@ async function getOrCreateAutorKeyword(keyword) {
 async function tryInsertArtigo(artigoObj) {
   if (!(await tableExists("artigo")))
     return { id: null, error: "Tabela artigo não existe" };
+  // truncar strings proativamente para evitar erros de tamanho no banco
+  let payload = { ...artigoObj };
+  try {
+    for (const [k, v] of Object.entries(payload)) {
+      if (typeof v === "string" && v.length > TRUNCATE_MAX) {
+        console.warn(
+          `Campo '${k}' truncado de ${v.length} para ${TRUNCATE_MAX} caracteres.`,
+        );
+        payload[k] = v.slice(0, TRUNCATE_MAX);
+      }
+    }
+  } catch (e) {
+    console.warn("Erro ao truncar strings do payload:", e);
+  }
+
   // sanitizar payload: manter apenas colunas existentes na tabela artigo
   try {
     if (!tableColumnsCache.has("artigo")) {
       const cols = new Set();
-      for (const k of Object.keys(artigoObj)) {
+      for (const k of Object.keys(payload)) {
         try {
           if (await columnExists("artigo", k)) cols.add(k);
         } catch (e) {
@@ -1064,25 +1079,58 @@ async function tryInsertArtigo(artigoObj) {
     }
     const allowed = tableColumnsCache.get("artigo");
     const sanitized = {};
-    for (const [k, v] of Object.entries(artigoObj)) {
+    for (const [k, v] of Object.entries(payload)) {
       if (allowed.has(k)) sanitized[k] = v;
       else console.debug(`Removendo campo não mapeado de artigo: ${k}`);
     }
     if (Object.keys(sanitized).length === 0)
       return { id: null, error: "Nenhum campo válido para inserir em artigo" };
-    artigoObj = sanitized;
+    payload = sanitized;
   } catch (e) {
     console.warn("Falha ao sanitizar payload artigo:", e);
   }
   try {
-    console.debug("Inserindo artigo:", artigoObj);
+    console.debug("Inserindo artigo:", payload);
     const r = await supabase
       .from("artigo")
-      .insert(artigoObj)
+      .insert(payload)
       .select("id")
       .single();
     if (r.error) {
       console.error("Supabase returned error on insert artigo:", r.error);
+      // detectar erro de comprimento de campo (22001) e tentar truncar
+      if (r.error.code === "22001") {
+        try {
+          const lengths = {};
+          for (const [k, v] of Object.entries(artigoObj)) {
+            if (typeof v === "string") lengths[k] = v.length;
+          }
+          console.warn("Comprimentos de campos (strings):", lengths);
+          // truncar todas as strings para TRUNCATE_MAX caracteres e tentar novamente
+          const truncated = {};
+          for (const [k, v] of Object.entries(artigoObj)) {
+            if (typeof v === "string") truncated[k] = v.slice(0, TRUNCATE_MAX);
+            else truncated[k] = v;
+          }
+          console.warn(
+            "Tentando inserir artigo com strings truncadas (20 chars)",
+            truncated,
+          );
+          const r2 = await supabase
+            .from("artigo")
+            .insert(truncated)
+            .select("id")
+            .single();
+          if (r2.error) {
+            console.error("Segundo insert truncado também falhou:", r2.error);
+            return { id: null, error: r2.error };
+          }
+          return { id: r2.data ? r2.data.id : null, truncated: true };
+        } catch (ee) {
+          console.error("Erro ao tentar truncar/reattempt:", ee);
+          return { id: null, error: r.error };
+        }
+      }
       return { id: null, error: r.error };
     }
     return { id: r.data ? r.data.id : null };
