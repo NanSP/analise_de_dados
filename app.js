@@ -9,6 +9,7 @@ const thead = document.getElementById("thead"),
   btnVoltar = document.getElementById("btnVoltar"),
   buttonsDiv = document.querySelector(".buttons"),
   headerInner = document.querySelector(".header-inner");
+const REF_SUMMARY_MAX_LENGTH = 120;
 function criarTabela(dados) {
   thead.innerHTML = "";
   tbody.innerHTML = "";
@@ -61,8 +62,20 @@ function criarTabela(dados) {
       let val = item[h] ?? "";
       if (typeof val === "string" && /referenc/i.test(h)) {
         const full = val.replace(/\s+/g, " ").trim();
-        const summary = full.length > 120 ? full.slice(0, 120) + "..." : full;
-        tr += `<td title="${escapeHtml(full)}">${escapeHtml(summary)}</td>`;
+        const refsCount = full
+          ? full
+              .split(/\s*;\s*|\s*\|\s*/)
+              .map((ref) => ref.trim())
+              .filter(Boolean).length
+          : 0;
+        const summary =
+          full.length > REF_SUMMARY_MAX_LENGTH
+            ? full.slice(0, REF_SUMMARY_MAX_LENGTH) + "..."
+            : full;
+        const display = refsCount
+          ? `${summary} (${refsCount} ref.)`
+          : summary;
+        tr += `<td title="${escapeHtml(full)}">${escapeHtml(display)}</td>`;
       } else {
         tr += `<td>${escapeHtml(val)}</td>`;
       }
