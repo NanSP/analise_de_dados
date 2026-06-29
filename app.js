@@ -33,6 +33,44 @@ function criarTabela(dados) {
     tbody.innerHTML += tr;
   });
 }
+function criarTabela(dados) {
+  const escapeHtml = (s) =>
+    String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  thead.innerHTML = "";
+  tbody.innerHTML = "";
+  if (!dados || dados.length === 0) {
+    info.innerHTML = "Nenhum dado encontrado.";
+    return;
+  }
+  info.innerHTML = `${dados.length} registro(s) encontrado(s).`;
+  const headers = Object.keys(dados[0]);
+  let trHead = "<tr>";
+  headers.forEach((h) => {
+    trHead += `<th>${escapeHtml(h)}</th>`;
+  });
+  trHead += "</tr>";
+  thead.innerHTML = trHead;
+  dados.forEach((item) => {
+    let tr = "<tr>";
+    headers.forEach((h) => {
+      let val = item[h] ?? "";
+      if (typeof val === "string" && /referenc/i.test(h)) {
+        const full = val.replace(/\s+/g, " ").trim();
+        const summary = full.length > 120 ? full.slice(0, 120) + "..." : full;
+        tr += `<td title="${escapeHtml(full)}">${escapeHtml(summary)}</td>`;
+      } else {
+        tr += `<td>${escapeHtml(val)}</td>`;
+      }
+    });
+    tr += "</tr>";
+    tbody.innerHTML += tr;
+  });
+}
 function showContentView() {
   if (buttonsDiv) buttonsDiv.style.display = "none";
   if (btnVoltar && headerInner) {
