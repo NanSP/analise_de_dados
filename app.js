@@ -11,30 +11,6 @@ const thead = document.getElementById("thead"),
   headerInner = document.querySelector(".header-inner");
 const REF_SUMMARY_MAX_LENGTH = 120;
 function criarTabela(dados) {
-  thead.innerHTML = "";
-  tbody.innerHTML = "";
-  if (!dados || dados.length === 0) {
-    info.innerHTML = "Nenhum dado encontrado.";
-    return;
-  }
-  info.innerHTML = `${dados.length} registro(s) encontrado(s).`;
-  const headers = Object.keys(dados[0]);
-  let trHead = "<tr>";
-  headers.forEach((h) => {
-    trHead += `<th>${h}</th>`;
-  });
-  trHead += "</tr>";
-  thead.innerHTML = trHead;
-  dados.forEach((item) => {
-    let tr = "<tr>";
-    headers.forEach((h) => {
-      tr += `<td>${item[h] ?? ""}</td>`;
-    });
-    tr += "</tr>";
-    tbody.innerHTML += tr;
-  });
-}
-function criarTabela(dados) {
   const escapeHtml = (s) =>
     String(s)
       .replace(/&/g, "&amp;")
@@ -120,32 +96,29 @@ async function listarArtigos() {
     info.innerText = "Erro";
   }
 }
-async function listarAutores() {
-  const { data, error } = await supabase.from("autor").select("*");
-  if (error) {
-    alert(error.message);
-    return;
+async function listarDados(tableName, label) {
+  try {
+    const { data, error } = await supabase.from(tableName).select("*");
+    if (error) {
+      console.error(`Erro ao listar ${label}:`, error);
+      alert(error.message || `Erro ao listar ${label}`);
+      return;
+    }
+    criarTabela(data);
+    showContentView();
+  } catch (e) {
+    console.error(`Erro ao listar ${label}:`, e);
+    alert(`Erro ao listar ${label}`);
   }
-  criarTabela(data);
-  showContentView();
+}
+async function listarAutores() {
+  return listarDados("autor", "autores");
 }
 async function listarKeywords() {
-  const { data, error } = await supabase.from("index_keyword").select("*");
-  if (error) {
-    alert(error.message);
-    return;
-  }
-  criarTabela(data);
-  showContentView();
+  return listarDados("index_keyword", "keywords");
 }
 async function listarReferencias() {
-  const { data, error } = await supabase.from("revista").select("*");
-  if (error) {
-    alert(error.message);
-    return;
-  }
-  criarTabela(data);
-  showContentView();
+  return listarDados("revista", "referências");
 }
 function limparTabela() {
   thead.innerHTML = "";
@@ -757,46 +730,6 @@ async function showCountDoi() {
 }
 document.getElementById("btnFillDoi").addEventListener("click", showCountDoi);
 checkSupabaseConnection();
-
-async function listarAutores() {
-  const { data, error } = await supabase.from("autor").select("*");
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  criarTabela(data);
-  showContentView();
-}
-
-// ============================================
-// PALAVRAS-CHAVE
-// ============================================
-
-async function listarKeywords() {
-  const { data, error } = await supabase.from("index_keyword").select("*");
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
-
-  criarTabela(data);
-  showContentView();
-}
-
-// ============================================
-// REFERÊNCIAS
-// ============================================
-
-async function listarReferencias() {
-  const { data, error } = await supabase.from("revista").select("*");
-
-  if (error) {
-    alert(error.message);
-    return;
-  }
 
   criarTabela(data);
   showContentView();
