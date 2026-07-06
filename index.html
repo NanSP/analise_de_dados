@@ -38,34 +38,73 @@
 
     <div class="info" id="info"></div>
 
-    <section class="charts-panel" id="chartsPanel" hidden>
-      <div class="chart-card">
-        <div class="chart-head">
-          <h3>Artigos por ano</h3>
-          <span id="yearSummary">Aguardando dados</span>
-        </div>
-        <svg
-          id="yearChart"
-          class="chart-svg"
-          viewBox="0 0 420 220"
-          role="img"
-          aria-label="Gráfico de artigos por ano"
-        ></svg>
+    <section class="dashboard-panel">
+      <div class="stats-grid">
+        <article class="stat-card">
+          <span>Total de registros</span>
+          <strong id="totalCount">0</strong>
+          <p>Itens carregados</p>
+        </article>
+        <article class="stat-card">
+          <span>Anos únicos</span>
+          <strong id="yearCount">0</strong>
+          <p>Períodos extraídos</p>
+        </article>
+        <article class="stat-card">
+          <span>Autores únicos</span>
+          <strong id="authorCount">0</strong>
+          <p>Principais autores</p>
+        </article>
+        <article class="stat-card">
+          <span>Keywords únicas</span>
+          <strong id="keywordCount">0</strong>
+          <p>Termos encontrados</p>
+        </article>
       </div>
 
-      <div class="chart-card">
-        <div class="chart-head">
-          <h3>Top autores</h3>
-          <span id="authorSummary">Aguardando dados</span>
+      <section class="charts-panel" id="chartsPanel" hidden>
+        <div class="chart-card">
+          <div class="chart-head">
+            <h3>Artigos por ano</h3>
+            <span id="yearSummary">Aguardando dados</span>
+          </div>
+          <svg
+            id="yearChart"
+            class="chart-svg"
+            viewBox="0 0 420 220"
+            role="img"
+            aria-label="Gráfico de artigos por ano"
+          ></svg>
         </div>
-        <svg
-          id="authorChart"
-          class="chart-svg"
-          viewBox="0 0 420 220"
-          role="img"
-          aria-label="Gráfico de autores"
-        ></svg>
-      </div>
+
+        <div class="chart-card">
+          <div class="chart-head">
+            <h3>Top autores</h3>
+            <span id="authorSummary">Aguardando dados</span>
+          </div>
+          <svg
+            id="authorChart"
+            class="chart-svg"
+            viewBox="0 0 420 220"
+            role="img"
+            aria-label="Gráfico de autores"
+          ></svg>
+        </div>
+
+        <div class="chart-card wide-card">
+          <div class="chart-head">
+            <h3>Top keywords</h3>
+            <span id="keywordSummary">Aguardando dados</span>
+          </div>
+          <svg
+            id="keywordChart"
+            class="chart-svg"
+            viewBox="0 0 420 220"
+            role="img"
+            aria-label="Gráfico de keywords"
+          ></svg>
+        </div>
+      </section>
     </section>
 
     <table>
