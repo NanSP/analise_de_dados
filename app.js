@@ -34,6 +34,143 @@ function createSvgElement(name, attrs = {}) {
   return el;
 }
 
+const relationCache = {
+  autor: null,
+  revista: null,
+  index_keyword: null,
+  autor_keywords: null,
+};
+
+async function loadRelationLabelMap(table, candidateFields) {
+  if (relationCache[table]) return relationCache[table];
+  // filtrar candidateFields para apenas colunas existentes na tabela
+  const available = [];
+  for (const f of candidateFields) {
+    try {
+      if (await columnExists(table, f)) available.push(f);
+    } catch (e) {
+      // ignore e continue
+    }
+  }
+  const selectFields =
+    available.length > 0 ? ["id", ...available].join(",") : "id";
+  const { data, error } = await supabase.from(table).select(selectFields);
+  const map = new Map();
+  if (!error && Array.isArray(data)) {
+    data.forEach((row) => {
+      const id = row?.id;
+      if (id === undefined || id === null) return;
+      const label =
+        (available.length > 0
+          ? available.map((field) => row?.[field])
+          : []
+        ).find((value) => typeof value === "string" && value.trim()) ||
+        String(id);
+      map.set(String(id), label);
+    });
+  } else {
+    console.warn(`Falha ao carregar labels de ${table}:`, error);
+  }
+  relationCache[table] = map;
+  return map;
+}
+
+function countByIdField(dados, idField, labelMap) {
+  const counts = new Map();
+  dados.forEach((item) => {
+    const id = item?.[idField];
+    if (id === undefined || id === null) return;
+    const label = labelMap.get(String(id)) || String(id);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([label, value]) => ({ label, value }));
+}
+
+async function getAuthorEntriesFromRelations(dados) {
+  const authorMap = await loadRelationLabelMap("autor", [
+    "nome",
+    "nome_completo",
+    "name",
+  ]);
+  const rawEntries = countByIdField(dados, "id_autor", authorMap);
+  if (rawEntries.length) return rawEntries;
+
+  if (!(await tableExists("artigo_autor"))) return [];
+  const { data, error } = await supabase
+    .from("artigo_autor")
+    .select("id_autor");
+  if (error || !Array.isArray(data)) return [];
+  const counts = new Map();
+  data.forEach((item) => {
+    const id = item?.id_autor;
+    if (id === undefined || id === null) return;
+    const label = authorMap.get(String(id)) || String(id);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, value]) => ({ label, value }));
+}
+
+async function getJournalEntriesFromRelations(dados) {
+  const journalMap = await loadRelationLabelMap("revista", [
+    "nome_revista",
+    "revista",
+    "title",
+    "name",
+  ]);
+  const rawEntries = countByIdField(dados, "id_revista", journalMap);
+  if (rawEntries.length) return rawEntries;
+
+  if (!(await tableExists("artigo_revista"))) return [];
+  const { data, error } = await supabase
+    .from("artigo_revista")
+    .select("id_revista");
+  if (error || !Array.isArray(data)) return [];
+  const counts = new Map();
+  data.forEach((item) => {
+    const id = item?.id_revista;
+    if (id === undefined || id === null) return;
+    const label = journalMap.get(String(id)) || String(id);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, value]) => ({ label, value }));
+}
+
+async function getKeywordEntriesFromRelations(dados) {
+  const indexMap = await loadRelationLabelMap("index_keyword", [
+    "index_keyword",
+    "keyword",
+    "name",
+  ]);
+  const autorKeywordMap = await loadRelationLabelMap("autor_keywords", [
+    "autor_keyword",
+    "keyword",
+    "name",
+  ]);
+
+  const entries = [];
+  entries.push(...countByIdField(dados, "id_index_keyword", indexMap));
+  entries.push(...countByIdField(dados, "id_autor_keyword", autorKeywordMap));
+
+  const merged = new Map();
+  entries.forEach(({ label, value }) => {
+    merged.set(label, (merged.get(label) || 0) + value);
+  });
+
+  return [...merged.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, value]) => ({ label, value }));
+}
+
 function renderBarChart(svg, values, label) {
   if (!svg) return;
   svg.innerHTML = "";
@@ -53,28 +190,53 @@ function renderBarChart(svg, values, label) {
   const width = 420;
   const height = 220;
   const padding = 28;
-  const chartHeight = height - padding * 2;
-  const chartWidth = width - padding * 2;
+  // tornar SVG responsivo e permitir overflow para tooltips/labels
+  try {
+    svg.setAttribute("height", String(height));
+    svg.style.overflow = "visible";
+    svg.style.display = "block";
+  } catch (e) {}
+  // espaço extra reservado para rótulos multilinha
+  const chartHeight = height - padding * 2 - 24;
+  // chartWidth será dinamicamente ajustado abaixo quando necessário
+  let chartWidth = width - padding * 2;
   const maxValue = Math.max(...values.map((item) => item.value), 1);
-  const barWidth = Math.max(
-    24,
-    (chartWidth - (values.length - 1) * 14) / values.length,
+  const GAP = 60; // espaço entre barras (aumentado para legibilidade)
+  // aumentar largura máxima das barras
+  const tentativeBarWidth =
+    (chartWidth - (values.length - 1) * GAP) / values.length;
+  const barWidth = Math.max(24, Math.min(200, tentativeBarWidth));
+  // calcular largura total necessária para todas as barras
+  const totalBarsWidth = Math.max(
+    0,
+    values.length * barWidth + Math.max(0, values.length - 1) * GAP,
   );
+  // se necessário, aumentar a largura do SVG para permitir scroll horizontal
+  try {
+    const neededWidth = Math.max(width, totalBarsWidth + padding * 2);
+    svg.setAttribute("viewBox", `0 0 ${neededWidth} ${height}`);
+    svg.style.minWidth = `${Math.ceil(totalBarsWidth + padding * 2)}px`;
+    if (svg.parentElement) svg.parentElement.style.overflowX = "auto";
+    // ajustar chartWidth para desenho interno
+    chartWidth = Math.max(chartWidth, totalBarsWidth);
+  } catch (e) {}
 
   const grid = createSvgElement("line", {
     x1: padding,
-    y1: height - padding,
-    x2: width - padding,
-    y2: height - padding,
+    y1: height - padding - 18,
+    x2: padding + chartWidth,
+    y2: height - padding - 18,
     stroke: "#e2e8f0",
     "stroke-width": "1",
   });
   svg.appendChild(grid);
 
   values.forEach((item, index) => {
-    const barHeight = (item.value / maxValue) * (chartHeight - 16);
-    const x = padding + index * (barWidth + 14);
-    const y = height - padding - barHeight;
+    const barHeight = (item.value / maxValue) * (chartHeight - 12);
+    // posicionar barras (startX = padding quando houver scroll)
+    const startX = padding + Math.max(0, (chartWidth - totalBarsWidth) / 2);
+    const x = startX + index * (barWidth + GAP);
+    const y = height - padding - 18 - barHeight;
     const rect = createSvgElement("rect", {
       x: x.toString(),
       y: y.toString(),
@@ -83,14 +245,45 @@ function renderBarChart(svg, values, label) {
       rx: "8",
       fill: index % 2 === 0 ? "url(#barGradient)" : "#3b82f6",
     });
+    // montar rótulo em múltiplas linhas abaixo da barra e tooltip com nome completo
+    const fullLabel = String(item.label ?? "");
+    const splitLabelToLines = (text, maxChars = 18, maxLines = 2) => {
+      if (!text) return [""];
+      const words = text.split(/\s+/);
+      const lines = [];
+      let cur = "";
+      for (const w of words) {
+        const candidate = cur ? `${cur} ${w}` : w;
+        if (candidate.length <= maxChars) cur = candidate;
+        else {
+          if (cur) lines.push(cur);
+          cur = w;
+        }
+        if (lines.length >= maxLines) break;
+      }
+      if (cur && lines.length < maxLines) lines.push(cur);
+      return lines.slice(0, maxLines);
+    };
+    const lines = splitLabelToLines(fullLabel, 18, 2);
     const label = createSvgElement("text", {
       x: x + barWidth / 2,
-      y: height - padding + 18,
+      y: height - padding + 20,
       "text-anchor": "middle",
       fill: "#475569",
       "font-size": "11",
     });
-    label.textContent = item.label;
+    lines.forEach((ln, i) => {
+      const tspan = createSvgElement("tspan", {
+        x: (x + barWidth / 2).toString(),
+        dy: i === 0 ? "0" : "14",
+      });
+      tspan.textContent = ln;
+      label.appendChild(tspan);
+    });
+    // tooltip com o nome completo
+    const titleRect = createSvgElement("title");
+    titleRect.textContent = fullLabel;
+    rect.appendChild(titleRect);
     const valueText = createSvgElement("text", {
       x: x + barWidth / 2,
       y: y - 8,
@@ -147,6 +340,17 @@ function renderDonutChart(svg, values, label) {
     svg.appendChild(text);
     return;
   }
+  // layout responsivo e legenda à direita
+  const width = 420;
+  const height = 220;
+  const padding = 20;
+  try {
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", String(height));
+    svg.style.overflow = "visible";
+    if (svg.parentElement) svg.parentElement.style.overflowX = "auto";
+  } catch (e) {}
 
   const radius = 62;
   const circumference = 2 * Math.PI * radius;
@@ -154,37 +358,44 @@ function renderDonutChart(svg, values, label) {
   let offset = 0;
   const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
+  // centro do donut (esquerda) e área de legenda (direita)
+  const cx = padding + radius + 6; // 6px de folga
+  const cy = Math.round(height / 2);
+
+  // fundo do anel
   const circle = createSvgElement("circle", {
-    cx: "110",
-    cy: "110",
-    r: radius.toString(),
+    cx: String(cx),
+    cy: String(cy),
+    r: String(radius),
     fill: "none",
-    stroke: "#e2e8f0",
+    stroke: "#f1f5f9",
     "stroke-width": "24",
   });
   svg.appendChild(circle);
 
-  values.slice(0, 5).forEach((item, index) => {
+  // desenhar fatias (max 6 para legibilidade)
+  values.slice(0, 6).forEach((item, index) => {
     const length = (item.value / total) * circumference;
     const arc = createSvgElement("circle", {
-      cx: "110",
-      cy: "110",
-      r: radius.toString(),
+      cx: String(cx),
+      cy: String(cy),
+      r: String(radius),
       fill: "none",
       stroke: colors[index % colors.length],
       "stroke-width": "24",
       strokeLinecap: "round",
       strokeDasharray: `${length} ${circumference}`,
       strokeDashoffset: `${-offset}`,
-      transform: "rotate(-90 110 110)",
+      transform: `rotate(-90 ${cx} ${cy})`,
     });
     offset += length;
     svg.appendChild(arc);
   });
 
+  // título dentro do donut (linha única) e subtítulo com total de tipos
   const title = createSvgElement("text", {
-    x: "110",
-    y: "110",
+    x: String(cx),
+    y: String(cy - 6),
     "text-anchor": "middle",
     fill: "#0f172a",
     "font-size": "13",
@@ -193,28 +404,58 @@ function renderDonutChart(svg, values, label) {
   title.textContent = label;
   svg.appendChild(title);
 
-  const legendX = 210;
-  const legendY = 60;
-  values.slice(0, 5).forEach((item, index) => {
-    const y = legendY + index * 22;
+  const subtitle = createSvgElement("text", {
+    x: String(cx),
+    y: String(cy + 12),
+    "text-anchor": "middle",
+    fill: "#475569",
+    "font-size": "11",
+  });
+  subtitle.textContent = `${values.length} tipos`;
+  svg.appendChild(subtitle);
+
+  // legenda à direita
+  const legendX = cx + radius + 20;
+  const legendY = Math.max(24, cy - 50);
+  const legendGap = 22;
+  values.slice(0, 6).forEach((item, index) => {
+    const y = legendY + index * legendGap;
     const rect = createSvgElement("rect", {
-      x: legendX.toString(),
-      y: y.toString(),
-      width: "10",
-      height: "10",
+      x: String(legendX),
+      y: String(y - 10),
+      width: "12",
+      height: "12",
       rx: "2",
       fill: colors[index % colors.length],
     });
+
     const text = createSvgElement("text", {
-      x: (legendX + 16).toString(),
-      y: (y + 9).toString(),
-      fill: "#475569",
+      x: String(legendX + 18),
+      y: String(y),
+      fill: "#0f172a",
       "font-size": "12",
     });
-    text.textContent = `${item.label}: ${item.value}`;
+    // rótulo: nome (quebrado se longo) + ": " + count
+    const maxLabel = String(item.label || "");
+    const shortLabel =
+      maxLabel.length > 32 ? maxLabel.slice(0, 29) + "..." : maxLabel;
+    text.textContent = `${shortLabel}: ${item.value}`;
     svg.appendChild(rect);
     svg.appendChild(text);
   });
+
+  // caso haja mais categorias além das exibidas, mostrar "+N" no final da legenda
+  if (values.length > 6) {
+    const extra = values.length - 6;
+    const moreText = createSvgElement("text", {
+      x: String(legendX),
+      y: String(legendY + 6 * legendGap),
+      fill: "#64748b",
+      "font-size": "12",
+    });
+    moreText.textContent = `+${extra} outros`;
+    svg.appendChild(moreText);
+  }
 }
 
 function collectKeywords(dados) {
@@ -299,7 +540,7 @@ function renderMetrics(
   if (keywordCount) keywordCount.textContent = String(keywordCountValue);
 }
 
-function renderCharts(dados) {
+async function renderCharts(dados) {
   if (!chartsPanel) return;
   if (!dados || !dados.length) {
     chartsPanel.hidden = true;
@@ -353,12 +594,13 @@ function renderCharts(dados) {
     )
     .slice(-8)
     .map(([label, value]) => ({ label, value }));
-  const authorEntries = [...authors.entries()]
+  // debug toggle: quando true, mostra no console os valores que alimentam os gráficos
+  const DEBUG_CHARTS = false;
+  let keywordData = collectKeywords(dados);
+  let authorEntries = [...authors.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([label, value]) => ({ label, value }));
-  const keywordData = collectKeywords(dados);
-
   const journalEntries = collectTopValues(dados, [
     "Source title",
     "Source",
@@ -381,7 +623,47 @@ function renderCharts(dados) {
   );
   const doiEntries = collectDoiStats(dados);
 
-  renderMetrics(dados, yearEntries, authors.size, keywordData.unique);
+  if (authorEntries.length === 0) {
+    authorEntries = await getAuthorEntriesFromRelations(dados);
+  }
+  const actualJournalEntries =
+    journalEntries.length > 0
+      ? journalEntries
+      : await getJournalEntriesFromRelations(dados);
+  if (actualJournalEntries.length > 0) {
+    journalEntries.splice(0, journalEntries.length, ...actualJournalEntries);
+  }
+
+  if (keywordData.entries.length === 0) {
+    const fallbackKeywords = await getKeywordEntriesFromRelations(dados);
+    if (fallbackKeywords.length > 0) {
+      keywordData = {
+        entries: fallbackKeywords,
+        unique: fallbackKeywords.length,
+      };
+    }
+  }
+
+  if (DEBUG_CHARTS) {
+    console.debug("renderCharts debug: yearEntries", yearEntries);
+    console.debug("renderCharts debug: authorEntries", authorEntries);
+    console.debug("renderCharts debug: journalEntries", journalEntries);
+    console.debug("renderCharts debug: keywordData", keywordData);
+    // detectar labels numéricos (possível id em vez de nome)
+    const numericLabels = (arr) =>
+      arr.filter((it) => /^\d+$/.test(String(it.label)));
+    console.debug("numeric author labels:", numericLabels(authorEntries));
+    console.debug("numeric journal labels:", numericLabels(journalEntries));
+    console.debug(
+      "numeric keyword labels:",
+      numericLabels(keywordData.entries || []),
+    );
+  }
+
+  const authorCountValue = authorEntries.length;
+  const keywordCountValue =
+    (keywordData.unique ?? keywordData.entries.length) || 0;
+  renderMetrics(dados, yearEntries, authorCountValue, keywordCountValue);
 
   if (yearEntries.length > 0) {
     renderBarChart(yearChart, yearEntries, "Artigos por ano");
@@ -435,8 +717,8 @@ function renderCharts(dados) {
   }
 }
 
-function criarTabela(dados) {
-  renderCharts(dados);
+async function criarTabela(dados) {
+  await renderCharts(dados);
   const escapeHtml = (s) =>
     String(s)
       .replace(/&/g, "&amp;")
@@ -511,7 +793,7 @@ async function listarArtigos() {
       info.innerText = "Erro";
       return;
     }
-    criarTabela(data);
+    await criarTabela(data);
     if (Array.isArray(data) && data.length > 0) showContentView();
     else info.innerText = "Nenhum artigo encontrado";
   } catch (e) {
@@ -528,7 +810,7 @@ async function listarDados(tableName, label) {
       alert(error.message || `Erro ao listar ${label}`);
       return;
     }
-    criarTabela(data);
+    await criarTabela(data);
     showContentView();
   } catch (e) {
     console.error(`Erro ao listar ${label}:`, e);
@@ -1050,7 +1332,7 @@ async function listarIssnIsbn() {
         b = r.isbn || "";
       return { issn_isbn: [i, b].filter(Boolean).join(" / ") };
     });
-    criarTabela(out);
+    await criarTabela(out);
     showContentView();
   } catch (e) {
     console.error("Erro:", e);
@@ -1153,777 +1435,4 @@ async function showCountDoi() {
   }
 }
 document.getElementById("btnFillDoi").addEventListener("click", showCountDoi);
-checkSupabaseConnection();
-
-// ============================================
-// IMPORTAR CSV
-// ============================================
-
-// ============================================
-// NORMALIZAÇÃO E INSERÇÃO RELACIONAL
-// ============================================
-
-async function tableExists(table) {
-  const { error } = await supabase.from(table).select("id").limit(1);
-  return !error;
-}
-
-async function columnExists(table, column) {
-  const { error } = await supabase.from(table).select(`${column}`).limit(1);
-  return !error;
-}
-
-// cache de colunas por tabela para reduzir consultas repetidas
-const tableColumnsCache = new Map();
-
-// insere em qualquer tabela após sanitizar campos com base nas colunas existentes
-async function sanitizeAndInsert(table, payload) {
-  if (!(await tableExists(table)))
-    return { error: `Tabela ${table} não existe` };
-  try {
-    if (!tableColumnsCache.has(table)) {
-      const cols = new Set();
-      for (const k of Object.keys(payload)) {
-        try {
-          if (await columnExists(table, k)) cols.add(k);
-        } catch (e) {
-          // ignore
-        }
-      }
-      tableColumnsCache.set(table, cols);
-    }
-
-    const allowed = tableColumnsCache.get(table);
-    const sanitized = {};
-    for (const [k, v] of Object.entries(payload)) {
-      if (allowed.has(k)) sanitized[k] = v;
-      else console.debug(`Removendo campo não mapeado de ${table}: ${k}`);
-    }
-    if (Object.keys(sanitized).length === 0)
-      return { error: "Nenhum campo válido para inserir" };
-
-    const r = await supabase.from(table).insert(sanitized);
-    if (r.error) {
-      console.error(
-        `Supabase error insert ${table}:`,
-        r.error,
-        "payload:",
-        sanitized,
-      );
-      return { error: r.error };
-    }
-    return { data: r.data };
-  } catch (e) {
-    console.error(`Erro sanitizeAndInsert ${table}:`, e);
-    return { error: e };
-  }
-}
-
-// tentativa segura de encontrar um registro pelo valor da coluna
-async function safeFind(table, column, value) {
-  if (!value) return null;
-  // tenta RPC genérico para evitar problemas de encoding na query string
-  try {
-    const r = await supabase.rpc("find_id_by_value", {
-      p_table: table,
-      p_column: column,
-      p_value: value,
-    });
-    if (r.data) return r.data;
-  } catch (e) {
-    // ignore e fallback
-  }
-  // 1) filter eq
-  try {
-    const q1 = await supabase
-      .from(table)
-      .select("id")
-      .eq(column, value)
-      .limit(1)
-      .single();
-    if (q1.data && q1.data.id) return q1.data.id;
-  } catch (e) {}
-
-  // 2) match
-  try {
-    const q2 = await supabase
-      .from(table)
-      .select("id")
-      .match({ [column]: value })
-      .limit(1)
-      .single();
-    if (q2.data && q2.data.id) return q2.data.id;
-  } catch (e) {}
-
-  // 3) ilike (contains)
-  try {
-    const q3 = await supabase
-      .from(table)
-      .select("id")
-      .ilike(column, `%${value}%`)
-      .limit(1)
-      .single();
-    if (q3.data && q3.data.id) return q3.data.id;
-  } catch (e) {}
-
-  return null;
-}
-
-async function getOrCreateRevista(nome) {
-  if (!(await tableExists("revista"))) return null;
-  const nameCol = (await columnExists("revista", "nome_revista"))
-    ? "nome_revista"
-    : null;
-  if (!nameCol) return null;
-
-  // tentativa segura para evitar 406: filter -> match -> ilike
-  try {
-    const id = await safeFind("revista", nameCol, nome);
-    if (id) return id;
-  } catch (e) {}
-
-  try {
-    const r = await supabase
-      .from("revista")
-      .insert({ [nameCol]: nome })
-      .select("id")
-      .single();
-    return r.data ? r.data.id : null;
-  } catch (e) {
-    console.error("Erro ao inserir revista", e);
-    return null;
-  }
-}
-
-async function getOrCreateAuthor(nome) {
-  if (!(await tableExists("autor"))) return null;
-  const col = (await columnExists("autor", "nome")) ? "nome" : "nome_completo";
-  try {
-    const id = await safeFind("autor", col, nome);
-    if (id) return id;
-  } catch (e) {}
-
-  try {
-    const ins = { nome: nome, nome_completo: nome };
-    const r = await supabase.from("autor").insert(ins).select("id").single();
-    return r.data ? r.data.id : null;
-  } catch (e) {
-    console.error("Erro ao inserir autor", e);
-    return null;
-  }
-}
-
-async function getOrCreateIndexKeyword(keyword) {
-  if (!(await tableExists("index_keyword"))) return null;
-  const col = (await columnExists("index_keyword", "index_keyword"))
-    ? "index_keyword"
-    : null;
-  if (!col) return null;
-  try {
-    const id = await safeFind("index_keyword", col, keyword);
-    if (id) return id;
-  } catch (e) {}
-
-  try {
-    const r = await supabase
-      .from("index_keyword")
-      .insert({ [col]: keyword })
-      .select("id")
-      .single();
-    return r.data ? r.data.id : null;
-  } catch (e) {
-    console.error("Erro ao inserir index_keyword", e);
-    return null;
-  }
-}
-
-async function getOrCreateAutorKeyword(keyword) {
-  if (!(await tableExists("autor_keywords"))) return null;
-  const col = (await columnExists("autor_keywords", "autor_keyword"))
-    ? "autor_keyword"
-    : null;
-  if (!col) return null;
-  try {
-    const id = await safeFind("autor_keywords", col, keyword);
-    if (id) return id;
-  } catch (e) {}
-
-  try {
-    const r = await supabase
-      .from("autor_keywords")
-      .insert({ [col]: keyword })
-      .select("id")
-      .single();
-    return r.data ? r.data.id : null;
-  } catch (e) {
-    console.error("Erro ao inserir autor_keyword", e);
-    return null;
-  }
-}
-
-async function tryInsertArtigo(artigoObj) {
-  if (!(await tableExists("artigo")))
-    return { id: null, error: "Tabela artigo não existe" };
-  // truncar strings proativamente para evitar erros de tamanho no banco
-  let payload = { ...artigoObj };
-  try {
-    for (const [k, v] of Object.entries(payload)) {
-      if (typeof v === "string" && v.length > TRUNCATE_MAX) {
-        console.warn(
-          `Campo '${k}' truncado de ${v.length} para ${TRUNCATE_MAX} caracteres.`,
-        );
-        payload[k] = v.slice(0, TRUNCATE_MAX);
-      }
-    }
-  } catch (e) {
-    console.warn("Erro ao truncar strings do payload:", e);
-  }
-
-  // sanitizar payload: manter apenas colunas existentes na tabela artigo
-  try {
-    if (!tableColumnsCache.has("artigo")) {
-      const cols = new Set();
-      for (const k of Object.keys(payload)) {
-        try {
-          if (await columnExists("artigo", k)) cols.add(k);
-        } catch (e) {
-          // ignore
-        }
-      }
-      tableColumnsCache.set("artigo", cols);
-    }
-    const allowed = tableColumnsCache.get("artigo");
-    const sanitized = {};
-    for (const [k, v] of Object.entries(payload)) {
-      if (allowed.has(k)) sanitized[k] = v;
-      else console.debug(`Removendo campo não mapeado de artigo: ${k}`);
-    }
-    if (Object.keys(sanitized).length === 0)
-      return { id: null, error: "Nenhum campo válido para inserir em artigo" };
-    payload = sanitized;
-  } catch (e) {
-    console.warn("Falha ao sanitizar payload artigo:", e);
-  }
-  try {
-    console.debug("Inserindo artigo:", payload);
-    const r = await supabase
-      .from("artigo")
-      .insert(payload)
-      .select("id")
-      .single();
-    if (r.error) {
-      console.error("Supabase returned error on insert artigo:", r.error);
-      // detectar erro de comprimento de campo (22001) e tentar truncar
-      if (r.error.code === "22001") {
-        try {
-          const lengths = {};
-          for (const [k, v] of Object.entries(artigoObj)) {
-            if (typeof v === "string") lengths[k] = v.length;
-          }
-          console.warn("Comprimentos de campos (strings):", lengths);
-          // truncar todas as strings para TRUNCATE_MAX caracteres e tentar novamente
-          const truncated = {};
-          for (const [k, v] of Object.entries(artigoObj)) {
-            if (typeof v === "string") truncated[k] = v.slice(0, TRUNCATE_MAX);
-            else truncated[k] = v;
-          }
-          console.warn(
-            "Tentando inserir artigo com strings truncadas (20 chars)",
-            truncated,
-          );
-          const r2 = await supabase
-            .from("artigo")
-            .insert(truncated)
-            .select("id")
-            .single();
-          if (r2.error) {
-            console.error("Segundo insert truncado também falhou:", r2.error);
-            return { id: null, error: r2.error };
-          }
-          return { id: r2.data ? r2.data.id : null, truncated: true };
-        } catch (ee) {
-          console.error("Erro ao tentar truncar/reattempt:", ee);
-          return { id: null, error: r.error };
-        }
-      }
-      return { id: null, error: r.error };
-    }
-    return { id: r.data ? r.data.id : null };
-  } catch (e) {
-    console.error("Erro insert artigo:", e);
-    if (e && e.response) console.error("Response body:", e.response);
-    return { id: null, error: e };
-  }
-}
-
-async function normalizeAndInsert(dados) {
-  const resumo = {
-    artigos: 0,
-    revistas: 0,
-    autores: 0,
-    keywords: 0,
-    junctions: 0,
-    errors: [],
-  };
-
-  // caches para reduzir queries repetidas durante import
-  const cache = {
-    revista: new Map(),
-    autor: new Map(),
-    index_keyword: new Map(),
-    autor_keywords: new Map(),
-  };
-
-  async function getCachedOrCreateRevista(nome) {
-    if (!nome) return null;
-    if (cache.revista.has(nome)) return cache.revista.get(nome);
-    const id = await getOrCreateRevista(nome);
-    cache.revista.set(nome, id);
-    return id;
-  }
-
-  async function getCachedOrCreateAuthor(nome) {
-    if (!nome) return null;
-    if (cache.autor.has(nome)) return cache.autor.get(nome);
-    const id = await getOrCreateAuthor(nome);
-    cache.autor.set(nome, id);
-    return id;
-  }
-
-  async function getCachedOrCreateIndexKeyword(nome) {
-    if (!nome) return null;
-    if (cache.index_keyword.has(nome)) return cache.index_keyword.get(nome);
-    const id = await getOrCreateIndexKeyword(nome);
-    cache.index_keyword.set(nome, id);
-    return id;
-  }
-
-  async function getCachedOrCreateAutorKeyword(nome) {
-    if (!nome) return null;
-    if (cache.autor_keywords.has(nome)) return cache.autor_keywords.get(nome);
-    const id = await getOrCreateAutorKeyword(nome);
-    cache.autor_keywords.set(nome, id);
-    return id;
-  }
-
-  for (const row of dados) {
-    try {
-      const title =
-        row["Title"] ?? row["Titulo"] ?? row["title"] ?? row["TITLE"] ?? null;
-      const year =
-        parseInt(row["Year"] ?? row["Ano"] ?? row["year"] ?? "") || null;
-      const sourceTitle =
-        row["Source title"] ?? row["Source"] ?? row["source"] ?? null;
-      const doi = row["DOI"] ?? null;
-      const link = row["Link"] ?? row["link"] ?? null;
-      const referencias =
-        row["References"] ??
-        row["Referencias"] ??
-        row["References list"] ??
-        null;
-      const issn = row["ISSN"] ?? null;
-      const isbn = row["ISBN"] ?? null;
-      const coden = row["CODEN"] ?? null;
-      const linguagem =
-        row["Language of Original Document"] ??
-        row["Linguagem_Original"] ??
-        row["Language"] ??
-        null;
-      const qt_citacao =
-        parseInt(
-          row["Cited by"] ?? row["cited by"] ?? row["Citations"] ?? "",
-        ) || 0;
-
-      // criar/obter revista (usando cache)
-      const id_revista = sourceTitle
-        ? await getCachedOrCreateRevista(sourceTitle)
-        : null;
-      if (id_revista) resumo.revistas++;
-
-      // montar objeto artigo com os nomes de colunas corretos do seu schema
-      const artigoObj = {
-        titulo: title,
-        ano: year,
-        link: link,
-        referencias: referencias,
-        tipo_documento:
-          row["Document Type"] ?? row["Tipo de Documento"] ?? null,
-        issn: issn,
-        isbn: isbn,
-        coden: coden,
-        linguagem_original: linguagem,
-        qt_citacao: qt_citacao,
-        id_revista: id_revista,
-      };
-
-      const artigoRes = await tryInsertArtigo(artigoObj);
-      if (artigoRes.error) {
-        resumo.errors.push({ row: title, error: artigoRes.error });
-        continue;
-      }
-      const id_artigo = artigoRes.id;
-      resumo.artigos++;
-
-      // autores
-      const authorsField =
-        row["Authors"] ?? row["Author"] ?? row["Author full names"] ?? null;
-      let firstAuthorId = null;
-      if (authorsField) {
-        const names = authorsField
-          .split(/;|\||,/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-        for (const [i, name] of names.entries()) {
-          const id_autor = await getCachedOrCreateAuthor(name);
-          if (id_autor) {
-            resumo.autores++;
-            if (!firstAuthorId) firstAuthorId = id_autor;
-          }
-          // inserir junction artigo_autor
-          if ((await tableExists("artigo_autor")) && id_autor && id_artigo) {
-            try {
-              const resAA = await sanitizeAndInsert("artigo_autor", {
-                id_artigo: id_artigo,
-                id_autor: id_autor,
-              });
-              if (resAA && resAA.error) {
-                console.warn("erro artigo_autor", resAA.error);
-                console.warn("payload", { id_artigo, id_autor });
-              } else {
-                resumo.junctions++;
-              }
-            } catch (e) {
-              console.warn("erro artigo_autor", e);
-              console.warn("payload", { id_artigo, id_autor });
-            }
-          }
-        }
-      }
-
-      // define id_autor (representante) no artigo como o primeiro autor, se houver
-      if (firstAuthorId && id_artigo) {
-        try {
-          await supabase
-            .from("artigo")
-            .update({ id_autor: firstAuthorId })
-            .eq("id", id_artigo);
-        } catch (e) {
-          console.warn("erro atualizando id_autor no artigo", e);
-        }
-      }
-
-      // index keywords
-      // Index keywords e Author keywords: para o schema atual, salvamos o primeiro de cada
-      const indexField =
-        row["Index Keywords"] ??
-        row["Index Keywords"] ??
-        row["Author Keywords"] ??
-        null;
-      if (indexField) {
-        const kws = indexField
-          .split(/;|,/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-        if (kws.length && id_artigo) {
-          const id_kw = await getCachedOrCreateIndexKeyword(kws[0]);
-          if (id_kw) {
-            resumo.keywords++;
-            try {
-              await supabase
-                .from("artigo")
-                .update({ id_index_keyword: id_kw })
-                .eq("id", id_artigo);
-            } catch (e) {
-              console.warn("erro atualizando id_index_keyword no artigo", e);
-            }
-          }
-        }
-      }
-
-      const authorKeywordsField =
-        row["Author Keywords"] ?? row["Author Keywords"] ?? null;
-      if (authorKeywordsField && id_artigo) {
-        const aks = authorKeywordsField
-          .split(/;|,/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-        if (aks.length) {
-          const id_ak = await getCachedOrCreateAutorKeyword(aks[0]);
-          if (id_ak) {
-            resumo.keywords++;
-            try {
-              await supabase
-                .from("artigo")
-                .update({ id_autor_keyword: id_ak })
-                .eq("id", id_artigo);
-            } catch (e) {
-              console.warn("erro atualizando id_autor_keyword no artigo", e);
-            }
-          }
-        }
-      }
-
-      // criar entrada em artigo_revista se a tabela existir
-      if (id_revista && (await tableExists("artigo_revista")) && id_artigo) {
-        try {
-          const resAR = await sanitizeAndInsert("artigo_revista", {
-            id_artigo: id_artigo,
-            id_revista: id_revista,
-          });
-          if (resAR && resAR.error) {
-            console.warn("erro artigo_revista", resAR.error);
-            console.warn("payload", { id_artigo, id_revista });
-          } else {
-            resumo.junctions++;
-          }
-        } catch (e) {
-          console.warn("erro artigo_revista", e);
-        }
-      }
-    } catch (e) {
-      resumo.errors.push({ error: e });
-    }
-  }
-
-  // mostrar resumo para o usuário
-  let msg = `Importação finalizada. Artigos: ${resumo.artigos}, Revistas criadas: ${resumo.revistas}, Autores: ${resumo.autores}, Keywords: ${resumo.keywords}, Ligações: ${resumo.junctions}`;
-  if (resumo.errors.length)
-    msg += `\nErros: ${JSON.stringify(resumo.errors.slice(0, 5))}`;
-  alert(msg);
-  listarArtigos();
-}
-
-// ============================================
-// EVENTOS
-// ============================================
-
-function setButtonsEnabled(enabled) {
-  const ids = [
-    "btnArtigos",
-    "btnAutores",
-    "btnKeywords",
-    "btnReferencias",
-    "btnLimpar",
-  ];
-  ids.forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = !enabled;
-  });
-}
-
-async function checkSupabaseConnection() {
-  try {
-    // tentativa simples para verificar disponibilidade e auth
-    const r = await supabase.from("artigo").select("id").limit(1);
-    if (r && r.error) throw r.error;
-    info.innerText = "Conexão com Supabase OK";
-    setButtonsEnabled(true);
-  } catch (e) {
-    console.warn("Falha conexão Supabase:", e);
-    info.innerText =
-      "Erro de conexão com Supabase — os botões de consulta foram desativados.";
-    setButtonsEnabled(false);
-  }
-}
-
-document.getElementById("btnArtigos").addEventListener("click", listarArtigos);
-
-document.getElementById("btnAutores").addEventListener("click", listarAutores);
-
-document
-  .getElementById("btnKeywords")
-  .addEventListener("click", listarKeywords);
-
-document
-  .getElementById("btnReferencias")
-  .addEventListener("click", listarReferencias);
-
-// listar issn + isbn unidos
-async function listarIssnIsbn() {
-  // verificar se a tabela artigo existe
-  if (!(await tableExists("artigo"))) {
-    alert("Tabela 'artigo' não existe.");
-    return;
-  }
-
-  // selecionar apenas issn e isbn (se existirem) e montar uma coluna combinada
-  try {
-    // usar select raw para concatenar se o servidor permitir
-    const cols = [];
-    if (await columnExists("artigo", "issn")) cols.push("issn");
-    if (await columnExists("artigo", "isbn")) cols.push("isbn");
-
-    if (cols.length === 0) {
-      alert("Nem 'issn' nem 'isbn' existem na tabela 'artigo'.");
-      return;
-    }
-
-    const selectCols = cols.join(",");
-    const { data, error } = await supabase
-      .from("artigo")
-      .select(selectCols)
-      .limit(1000);
-
-    if (error) {
-      alert(error.message);
-      return;
-    }
-
-    // transformar cada linha em { identificador: 'ISSN / ISBN' }
-    const out = data.map((r) => {
-      const i = r.issn || "";
-      const b = r.isbn || "";
-      const combined = [i, b].filter(Boolean).join(" / ");
-      return { issn_isbn: combined };
-    });
-
-    criarTabela(out);
-    showContentView();
-  } catch (e) {
-    console.error("Erro listarIssnIsbn:", e);
-    alert("Erro ao gerar lista ISSN/ISBN");
-  }
-}
-
-document
-  .getElementById("btnIssnIsbn")
-  .addEventListener("click", listarIssnIsbn);
-
-if (btnVoltar) btnVoltar.addEventListener("click", showMenuView);
-
-document.getElementById("btnLimpar").addEventListener("click", limparTabela);
-
-document.getElementById("btnUpload").addEventListener("click", () => {
-  document.getElementById("fileInput").click();
-});
-
-// ============================================
-// PREENCHER DOIs NULOS
-// ============================================
-async function preencherDoiVazios() {
-  // a função agora aceita um objeto de opções para permitir execução via confirmação
-  const opts = arguments[0] || {};
-  const requireConfirm = !opts.skipConfirm;
-
-  if (!(await tableExists("artigo"))) {
-    alert("Tabela 'artigo' não existe.");
-    return;
-  }
-
-  if (!(await columnExists("artigo", "doi"))) {
-    alert(
-      "Coluna 'doi' não existe na tabela 'artigo'. Execute sql/add_column_doi.sql primeiro.",
-    );
-    return;
-  }
-
-  if (requireConfirm) {
-    // não executar sem confirmação explícita (a UI deve chamar com skipConfirm)
-    alert(
-      "A ação de preenchimento não é executada diretamente. Use o botão de confirmação gerado na interface.",
-    );
-    return;
-  }
-
-  try {
-    const lote = 500;
-    let offset = 0;
-    let totalUpdated = 0;
-
-    while (true) {
-      const start = offset;
-      const end = offset + lote - 1;
-      const { data, error } = await supabase
-        .from("artigo")
-        .select("id")
-        .is("doi", null)
-        .range(start, end);
-
-      if (error) {
-        alert(`Erro ao buscar artigos com doi nulo: ${error.message}`);
-        return;
-      }
-
-      if (!data || data.length === 0) break;
-
-      for (const row of data) {
-        try {
-          const u = await supabase
-            .from("artigo")
-            .update({ doi: "sem dados" })
-            .eq("id", row.id);
-          if (u.error) console.warn("Erro atualizando id", row.id, u.error);
-          else totalUpdated++;
-        } catch (e) {
-          console.warn("Erro atualizando doi para id", row.id, e);
-        }
-      }
-
-      if (data.length < lote) break;
-      offset += lote;
-    }
-
-    alert(`Atualização finalizada. Registros atualizados: ${totalUpdated}`);
-    listarArtigos();
-  } catch (e) {
-    console.error("Erro em preencherDoiVazios:", e);
-    alert("Erro ao preencher DOIs vazios. Veja console para detalhes.");
-  }
-}
-
-// não executa atualização diretamente: apenas mostra contagem e cria botão de confirmação
-async function showCountDoi() {
-  if (!(await tableExists("artigo"))) {
-    alert("Tabela 'artigo' não existe.");
-    return;
-  }
-
-  if (!(await columnExists("artigo", "doi"))) {
-    alert(
-      "Coluna 'doi' não existe na tabela 'artigo'. Execute sql/add_column_doi.sql primeiro.",
-    );
-    return;
-  }
-
-  try {
-    const res = await supabase
-      .from("artigo")
-      .select("id", { count: "exact", head: false })
-      .is("doi", null)
-      .limit(1);
-
-    if (res.error) {
-      alert(`Erro ao contar artigos com doi nulo: ${res.error.message}`);
-      return;
-    }
-
-    const count = res.count ?? (Array.isArray(res.data) ? res.data.length : 0);
-    info.innerText = `Registros com doi NULL: ${count}`;
-
-    // remover botão de confirmação existente, se houver
-    const existing = document.getElementById("btnConfirmFillDoi");
-    if (existing) existing.remove();
-
-    if (count > 0) {
-      const btn = document.createElement("button");
-      btn.id = "btnConfirmFillDoi";
-      btn.className = "danger";
-      btn.textContent = "Confirmar preencher DOI vazios";
-      btn.addEventListener("click", async () => {
-        btn.disabled = true;
-        await preencherDoiVazios({ skipConfirm: true });
-        btn.remove();
-      });
-      const container = document.querySelector(".buttons") || document.body;
-      container.appendChild(btn);
-    }
-  } catch (e) {
-    console.error("Erro ao contar DOIs nulos:", e);
-    alert("Erro ao verificar DOIs nulos. Veja console para detalhes.");
-  }
-}
-
-document.getElementById("btnFillDoi").addEventListener("click", showCountDoi);
-
-// verificar conexão ao carregar
 checkSupabaseConnection();
