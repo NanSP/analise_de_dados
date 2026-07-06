@@ -56,7 +56,10 @@ function renderBarChart(svg, values, label) {
   const chartHeight = height - padding * 2;
   const chartWidth = width - padding * 2;
   const maxValue = Math.max(...values.map((item) => item.value), 1);
-  const barWidth = Math.max(24, (chartWidth - (values.length - 1) * 14) / values.length);
+  const barWidth = Math.max(
+    24,
+    (chartWidth - (values.length - 1) * 14) / values.length,
+  );
 
   const grid = createSvgElement("line", {
     x1: padding,
@@ -103,9 +106,19 @@ function renderBarChart(svg, values, label) {
   });
 
   const defs = createSvgElement("defs");
-  const gradient = createSvgElement("linearGradient", { id: "barGradient", x1: "0%", y1: "0%", x2: "0%", y2: "100%" });
-  gradient.appendChild(createSvgElement("stop", { offset: "0%", "stop-color": "#60a5fa" }));
-  gradient.appendChild(createSvgElement("stop", { offset: "100%", "stop-color": "#2563eb" }));
+  const gradient = createSvgElement("linearGradient", {
+    id: "barGradient",
+    x1: "0%",
+    y1: "0%",
+    x2: "0%",
+    y2: "100%",
+  });
+  gradient.appendChild(
+    createSvgElement("stop", { offset: "0%", "stop-color": "#60a5fa" }),
+  );
+  gradient.appendChild(
+    createSvgElement("stop", { offset: "100%", "stop-color": "#2563eb" }),
+  );
   defs.appendChild(gradient);
   svg.appendChild(defs);
   const title = createSvgElement("text", {
@@ -263,7 +276,9 @@ function collectTopValues(dados, fields, splitValues = false) {
 function collectDoiStats(dados) {
   const present = dados.reduce((acc, item) => {
     const doi = item?.DOI ?? item?.doi;
-    return acc + (doi !== undefined && doi !== null && String(doi).trim() ? 1 : 0);
+    return (
+      acc + (doi !== undefined && doi !== null && String(doi).trim() ? 1 : 0)
+    );
   }, 0);
   const missing = dados.length - present;
   return [
@@ -272,7 +287,12 @@ function collectDoiStats(dados) {
   ];
 }
 
-function renderMetrics(dados, yearEntries, authorCountValue, keywordCountValue) {
+function renderMetrics(
+  dados,
+  yearEntries,
+  authorCountValue,
+  keywordCountValue,
+) {
   if (totalCount) totalCount.textContent = String(dados.length);
   if (yearCount) yearCount.textContent = String(yearEntries.length);
   if (authorCount) authorCount.textContent = String(authorCountValue);
@@ -291,7 +311,18 @@ function renderCharts(dados) {
   const years = new Map();
   const authors = new Map();
   const yearKeys = ["ano", "Ano", "Year", "year", "YEAR"];
-  const authorKeys = ["author", "Author", "Authors", "Author full names", "Autor", "autores", "nome_autor", "nome", "name", "Name"];
+  const authorKeys = [
+    "author",
+    "Author",
+    "Authors",
+    "Author full names",
+    "Autor",
+    "autores",
+    "nome_autor",
+    "nome",
+    "name",
+    "Name",
+  ];
 
   dados.forEach((item) => {
     const yearValue = yearKeys
@@ -317,7 +348,9 @@ function renderCharts(dados) {
   });
 
   const yearEntries = [...years.entries()]
-    .sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }))
+    .sort((a, b) =>
+      String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }),
+    )
     .slice(-8)
     .map(([label, value]) => ({ label, value }));
   const authorEntries = [...authors.entries()]
@@ -326,8 +359,26 @@ function renderCharts(dados) {
     .map(([label, value]) => ({ label, value }));
   const keywordData = collectKeywords(dados);
 
-  const journalEntries = collectTopValues(dados, ["Source title", "Source", "source", "journal", "Journal", "revista", "nome_revista"]);
-  const typeEntries = collectTopValues(dados, ["Document Type", "Tipo de Documento", "document_type", "tipo_documento", "type"], false);
+  const journalEntries = collectTopValues(dados, [
+    "Source title",
+    "Source",
+    "source",
+    "journal",
+    "Journal",
+    "revista",
+    "nome_revista",
+  ]);
+  const typeEntries = collectTopValues(
+    dados,
+    [
+      "Document Type",
+      "Tipo de Documento",
+      "document_type",
+      "tipo_documento",
+      "type",
+    ],
+    false,
+  );
   const doiEntries = collectDoiStats(dados);
 
   renderMetrics(dados, yearEntries, authors.size, keywordData.unique);
@@ -342,7 +393,8 @@ function renderCharts(dados) {
 
   if (authorEntries.length > 0) {
     renderDonutChart(authorChart, authorEntries, "Top autores");
-    if (authorSummary) authorSummary.textContent = `${authorEntries.length} nomes`;
+    if (authorSummary)
+      authorSummary.textContent = `${authorEntries.length} nomes`;
   } else {
     renderDonutChart(authorChart, [], "Top autores");
     if (authorSummary) authorSummary.textContent = "Sem autores";
@@ -350,7 +402,8 @@ function renderCharts(dados) {
 
   if (keywordData.entries.length > 0) {
     renderBarChart(keywordChart, keywordData.entries, "Top keywords");
-    if (keywordSummary) keywordSummary.textContent = `${keywordData.entries.length} termos`;
+    if (keywordSummary)
+      keywordSummary.textContent = `${keywordData.entries.length} termos`;
   } else {
     renderBarChart(keywordChart, [], "Top keywords");
     if (keywordSummary) keywordSummary.textContent = "Sem keywords";
@@ -358,7 +411,8 @@ function renderCharts(dados) {
 
   if (journalEntries.length > 0) {
     renderBarChart(journalChart, journalEntries, "Top revistas");
-    if (journalSummary) journalSummary.textContent = `${journalEntries.length} revistas`;
+    if (journalSummary)
+      journalSummary.textContent = `${journalEntries.length} revistas`;
   } else {
     renderBarChart(journalChart, [], "Top revistas");
     if (journalSummary) journalSummary.textContent = "Sem revistas";
@@ -420,9 +474,7 @@ function criarTabela(dados) {
           full.length > REF_SUMMARY_MAX_LENGTH
             ? full.slice(0, REF_SUMMARY_MAX_LENGTH) + "..."
             : full;
-        const display = refsCount
-          ? `${summary} (${refsCount} ref.)`
-          : summary;
+        const display = refsCount ? `${summary} (${refsCount} ref.)` : summary;
         tr += `<td title="${escapeHtml(full)}">${escapeHtml(display)}</td>`;
       } else {
         tr += `<td>${escapeHtml(val)}</td>`;
@@ -1102,16 +1154,6 @@ async function showCountDoi() {
 }
 document.getElementById("btnFillDoi").addEventListener("click", showCountDoi);
 checkSupabaseConnection();
-
-// ============================================
-// LIMPAR
-// ============================================
-
-function limparTabela() {
-  thead.innerHTML = "";
-  tbody.innerHTML = "";
-  info.innerHTML = "";
-}
 
 // ============================================
 // IMPORTAR CSV
