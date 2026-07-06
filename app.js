@@ -8,9 +8,255 @@ const thead = document.getElementById("thead"),
   info = document.getElementById("info"),
   btnVoltar = document.getElementById("btnVoltar"),
   buttonsDiv = document.querySelector(".buttons"),
-  headerInner = document.querySelector(".header-inner");
+  headerInner = document.querySelector(".header-inner"),
+  chartsPanel = document.getElementById("chartsPanel"),
+  yearChart = document.getElementById("yearChart"),
+  authorChart = document.getElementById("authorChart"),
+  yearSummary = document.getElementById("yearSummary"),
+  authorSummary = document.getElementById("authorSummary");
 const REF_SUMMARY_MAX_LENGTH = 120;
+
+function createSvgElement(name, attrs = {}) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", name);
+  Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+  return el;
+}
+
+function renderBarChart(svg, values, label) {
+  if (!svg) return;
+  svg.innerHTML = "";
+  if (!values || values.length === 0) {
+    const text = createSvgElement("text", {
+      x: "210",
+      y: "112",
+      "text-anchor": "middle",
+      fill: "#64748b",
+      "font-size": "14",
+    });
+    text.textContent = "Sem dados suficientes";
+    svg.appendChild(text);
+    return;
+  }
+
+  const width = 420;
+  const height = 220;
+  const padding = 28;
+  const chartHeight = height - padding * 2;
+  const chartWidth = width - padding * 2;
+  const maxValue = Math.max(...values.map((item) => item.value), 1);
+  const barWidth = Math.max(24, (chartWidth - (values.length - 1) * 14) / values.length);
+
+  const grid = createSvgElement("line", {
+    x1: padding,
+    y1: height - padding,
+    x2: width - padding,
+    y2: height - padding,
+    stroke: "#e2e8f0",
+    "stroke-width": "1",
+  });
+  svg.appendChild(grid);
+
+  values.forEach((item, index) => {
+    const barHeight = (item.value / maxValue) * (chartHeight - 16);
+    const x = padding + index * (barWidth + 14);
+    const y = height - padding - barHeight;
+    const rect = createSvgElement("rect", {
+      x: x.toString(),
+      y: y.toString(),
+      width: barWidth.toString(),
+      height: barHeight.toString(),
+      rx: "8",
+      fill: index % 2 === 0 ? "url(#barGradient)" : "#3b82f6",
+    });
+    const label = createSvgElement("text", {
+      x: x + barWidth / 2,
+      y: height - padding + 18,
+      "text-anchor": "middle",
+      fill: "#475569",
+      "font-size": "11",
+    });
+    label.textContent = item.label;
+    const valueText = createSvgElement("text", {
+      x: x + barWidth / 2,
+      y: y - 8,
+      "text-anchor": "middle",
+      fill: "#334155",
+      "font-size": "11",
+      "font-weight": "700",
+    });
+    valueText.textContent = item.value;
+    svg.appendChild(rect);
+    svg.appendChild(label);
+    svg.appendChild(valueText);
+  });
+
+  const defs = createSvgElement("defs");
+  const gradient = createSvgElement("linearGradient", { id: "barGradient", x1: "0%", y1: "0%", x2: "0%", y2: "100%" });
+  gradient.appendChild(createSvgElement("stop", { offset: "0%", "stop-color": "#60a5fa" }));
+  gradient.appendChild(createSvgElement("stop", { offset: "100%", "stop-color": "#2563eb" }));
+  defs.appendChild(gradient);
+  svg.appendChild(defs);
+  const title = createSvgElement("text", {
+    x: padding,
+    y: 18,
+    fill: "#0f172a",
+    "font-size": "13",
+    "font-weight": "700",
+  });
+  title.textContent = label;
+  svg.appendChild(title);
+}
+
+function renderDonutChart(svg, values, label) {
+  if (!svg) return;
+  svg.innerHTML = "";
+  if (!values || values.length === 0) {
+    const text = createSvgElement("text", {
+      x: "210",
+      y: "112",
+      "text-anchor": "middle",
+      fill: "#64748b",
+      "font-size": "14",
+    });
+    text.textContent = "Sem dados suficientes";
+    svg.appendChild(text);
+    return;
+  }
+
+  const radius = 62;
+  const circumference = 2 * Math.PI * radius;
+  const total = values.reduce((sum, item) => sum + item.value, 0) || 1;
+  let offset = 0;
+  const colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
+
+  const circle = createSvgElement("circle", {
+    cx: "110",
+    cy: "110",
+    r: radius.toString(),
+    fill: "none",
+    stroke: "#e2e8f0",
+    "stroke-width": "24",
+  });
+  svg.appendChild(circle);
+
+  values.slice(0, 5).forEach((item, index) => {
+    const length = (item.value / total) * circumference;
+    const arc = createSvgElement("circle", {
+      cx: "110",
+      cy: "110",
+      r: radius.toString(),
+      fill: "none",
+      stroke: colors[index % colors.length],
+      "stroke-width": "24",
+      strokeLinecap: "round",
+      strokeDasharray: `${length} ${circumference}`,
+      strokeDashoffset: `${-offset}`,
+      transform: "rotate(-90 110 110)",
+    });
+    offset += length;
+    svg.appendChild(arc);
+  });
+
+  const title = createSvgElement("text", {
+    x: "110",
+    y: "110",
+    "text-anchor": "middle",
+    fill: "#0f172a",
+    "font-size": "13",
+    "font-weight": "700",
+  });
+  title.textContent = label;
+  svg.appendChild(title);
+
+  const legendX = 210;
+  const legendY = 60;
+  values.slice(0, 5).forEach((item, index) => {
+    const y = legendY + index * 22;
+    const rect = createSvgElement("rect", {
+      x: legendX.toString(),
+      y: y.toString(),
+      width: "10",
+      height: "10",
+      rx: "2",
+      fill: colors[index % colors.length],
+    });
+    const text = createSvgElement("text", {
+      x: (legendX + 16).toString(),
+      y: (y + 9).toString(),
+      fill: "#475569",
+      "font-size": "12",
+    });
+    text.textContent = `${item.label}: ${item.value}`;
+    svg.appendChild(rect);
+    svg.appendChild(text);
+  });
+}
+
+function renderCharts(dados) {
+  if (!chartsPanel) return;
+  if (!dados || !dados.length) {
+    chartsPanel.hidden = true;
+    return;
+  }
+
+  chartsPanel.hidden = false;
+
+  const years = new Map();
+  const authors = new Map();
+  const yearKeys = ["ano", "Ano", "Year", "year", "YEAR"];
+  const authorKeys = ["author", "Author", "Authors", "Author full names", "Autor", "autores", "nome_autor", "nome", "name", "Name"];
+
+  dados.forEach((item) => {
+    const yearValue = yearKeys
+      .map((key) => item?.[key])
+      .find((value) => value !== undefined && value !== null && value !== "");
+    if (yearValue !== undefined) {
+      const yearLabel = String(yearValue).trim();
+      if (yearLabel) years.set(yearLabel, (years.get(yearLabel) || 0) + 1);
+    }
+
+    const authorValue = authorKeys
+      .map((key) => item?.[key])
+      .find((value) => typeof value === "string" && value.trim());
+    if (authorValue) {
+      const names = authorValue
+        .split(/;|\||,/)
+        .map((name) => name.trim())
+        .filter(Boolean);
+      names.forEach((name) => {
+        authors.set(name, (authors.get(name) || 0) + 1);
+      });
+    }
+  });
+
+  const yearEntries = [...years.entries()]
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }))
+    .slice(-8)
+    .map(([label, value]) => ({ label, value }));
+  const authorEntries = [...authors.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, value]) => ({ label, value }));
+
+  if (yearEntries.length > 0) {
+    renderBarChart(yearChart, yearEntries, "Artigos por ano");
+    if (yearSummary) yearSummary.textContent = `${yearEntries.length} períodos`;
+  } else {
+    renderBarChart(yearChart, [], "Artigos por ano");
+    if (yearSummary) yearSummary.textContent = "Sem ano";
+  }
+
+  if (authorEntries.length > 0) {
+    renderDonutChart(authorChart, authorEntries, "Top autores");
+    if (authorSummary) authorSummary.textContent = `${authorEntries.length} nomes`;
+  } else {
+    renderDonutChart(authorChart, [], "Top autores");
+    if (authorSummary) authorSummary.textContent = "Sem autores";
+  }
+}
+
 function criarTabela(dados) {
+  renderCharts(dados);
   const escapeHtml = (s) =>
     String(s)
       .replace(/&/g, "&amp;")
