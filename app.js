@@ -13,9 +13,15 @@ const thead = document.getElementById("thead"),
   yearChart = document.getElementById("yearChart"),
   authorChart = document.getElementById("authorChart"),
   keywordChart = document.getElementById("keywordChart"),
+  journalChart = document.getElementById("journalChart"),
+  typeChart = document.getElementById("typeChart"),
+  doiChart = document.getElementById("doiChart"),
   yearSummary = document.getElementById("yearSummary"),
   authorSummary = document.getElementById("authorSummary"),
   keywordSummary = document.getElementById("keywordSummary"),
+  journalSummary = document.getElementById("journalSummary"),
+  typeSummary = document.getElementById("typeSummary"),
+  doiSummary = document.getElementById("doiSummary"),
   totalCount = document.getElementById("totalCount"),
   yearCount = document.getElementById("yearCount"),
   authorCount = document.getElementById("authorCount"),
@@ -230,6 +236,42 @@ function collectKeywords(dados) {
   return { entries, unique: keywords.size };
 }
 
+function collectTopValues(dados, fields, splitValues = false) {
+  const countMap = new Map();
+  dados.forEach((item) => {
+    const value = fields
+      .map((key) => item?.[key])
+      .find((v) => v !== undefined && v !== null && String(v).trim());
+    if (!value) return;
+    if (splitValues && typeof value === "string") {
+      value
+        .split(/;|\||,/)
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => countMap.set(part, (countMap.get(part) || 0) + 1));
+    } else {
+      const label = String(value).trim();
+      if (label) countMap.set(label, (countMap.get(label) || 0) + 1);
+    }
+  });
+  return [...countMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([label, value]) => ({ label, value }));
+}
+
+function collectDoiStats(dados) {
+  const present = dados.reduce((acc, item) => {
+    const doi = item?.DOI ?? item?.doi;
+    return acc + (doi !== undefined && doi !== null && String(doi).trim() ? 1 : 0);
+  }, 0);
+  const missing = dados.length - present;
+  return [
+    { label: "Com DOI", value: present },
+    { label: "Sem DOI", value: missing },
+  ];
+}
+
 function renderMetrics(dados, yearEntries, authorCountValue, keywordCountValue) {
   if (totalCount) totalCount.textContent = String(dados.length);
   if (yearCount) yearCount.textContent = String(yearEntries.length);
@@ -284,6 +326,10 @@ function renderCharts(dados) {
     .map(([label, value]) => ({ label, value }));
   const keywordData = collectKeywords(dados);
 
+  const journalEntries = collectTopValues(dados, ["Source title", "Source", "source", "journal", "Journal", "revista", "nome_revista"]);
+  const typeEntries = collectTopValues(dados, ["Document Type", "Tipo de Documento", "document_type", "tipo_documento", "type"], false);
+  const doiEntries = collectDoiStats(dados);
+
   renderMetrics(dados, yearEntries, authors.size, keywordData.unique);
 
   if (yearEntries.length > 0) {
@@ -303,11 +349,35 @@ function renderCharts(dados) {
   }
 
   if (keywordData.entries.length > 0) {
-    renderDonutChart(keywordChart, keywordData.entries, "Top keywords");
+    renderBarChart(keywordChart, keywordData.entries, "Top keywords");
     if (keywordSummary) keywordSummary.textContent = `${keywordData.entries.length} termos`;
   } else {
-    renderDonutChart(keywordChart, [], "Top keywords");
+    renderBarChart(keywordChart, [], "Top keywords");
     if (keywordSummary) keywordSummary.textContent = "Sem keywords";
+  }
+
+  if (journalEntries.length > 0) {
+    renderBarChart(journalChart, journalEntries, "Top revistas");
+    if (journalSummary) journalSummary.textContent = `${journalEntries.length} revistas`;
+  } else {
+    renderBarChart(journalChart, [], "Top revistas");
+    if (journalSummary) journalSummary.textContent = "Sem revistas";
+  }
+
+  if (typeEntries.length > 0) {
+    renderDonutChart(typeChart, typeEntries, "Tipos de documento");
+    if (typeSummary) typeSummary.textContent = `${typeEntries.length} tipos`;
+  } else {
+    renderDonutChart(typeChart, [], "Tipos de documento");
+    if (typeSummary) typeSummary.textContent = "Sem tipos";
+  }
+
+  if (doiEntries.length > 0) {
+    renderBarChart(doiChart, doiEntries, "Presença de DOI");
+    if (doiSummary) doiSummary.textContent = `${doiEntries.length} categorias`;
+  } else {
+    renderBarChart(doiChart, [], "Presença de DOI");
+    if (doiSummary) doiSummary.textContent = "Sem dados";
   }
 }
 
