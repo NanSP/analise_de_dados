@@ -1103,10 +1103,6 @@ async function showCountDoi() {
 document.getElementById("btnFillDoi").addEventListener("click", showCountDoi);
 checkSupabaseConnection();
 
-  criarTabela(data);
-  showContentView();
-}
-
 // ============================================
 // LIMPAR
 // ============================================
@@ -1120,85 +1116,6 @@ function limparTabela() {
 // ============================================
 // IMPORTAR CSV
 // ============================================
-
-document.getElementById("fileInput").addEventListener("change", importarCSV);
-
-async function importarCSV(event) {
-  const arquivo = event.target.files[0];
-  if (!arquivo) return;
-
-  const texto = await arquivo.text();
-  const linhas = texto.split(/\r?\n/);
-
-  // detectar cabeçalho do arquivo (usa primeira linha não-vazia)
-  let headerLineIndex = 0;
-  while (
-    headerLineIndex < linhas.length &&
-    linhas[headerLineIndex].trim() === ""
-  )
-    headerLineIndex++;
-
-  if (headerLineIndex >= linhas.length) {
-    alert("Arquivo CSV vazio.");
-    return;
-  }
-
-  const parsedHeader = parseCSVLine(linhas[headerLineIndex]);
-  const headers = parsedHeader.map((h) =>
-    typeof h === "string" ? h.trim().replace(/^"|"$/g, "") : h,
-  );
-
-  // parser simples que respeita aspas e "" como escape
-  function parseCSVLine(line) {
-    const vals = [];
-    let cur = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          // escaped quote
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (ch === "," && !inQuotes) {
-        vals.push(cur);
-        cur = "";
-      } else {
-        cur += ch;
-      }
-    }
-    vals.push(cur);
-    return vals;
-  }
-
-  const dados = [];
-  // começar na linha após o header detectado
-  for (let i = headerLineIndex + 1; i < linhas.length; i++) {
-    const linha = linhas[i].trim();
-    if (!linha) continue;
-
-    const valores = parseCSVLine(linha);
-
-    const obj = {};
-    headers.forEach((col, idx) => {
-      const v = valores[idx] ?? null;
-      // trim e remover aspas remanescentes
-      obj[col] = typeof v === "string" ? v.trim().replace(/^"|"$/g, "") : v;
-    });
-
-    dados.push(obj);
-  }
-
-  if (dados.length === 0) {
-    alert("Nenhum registro para importar.");
-    return;
-  }
-  // normaliza e insere nos relacionamentos do modelo lógico
-  await normalizeAndInsert(dados);
-}
 
 // ============================================
 // NORMALIZAÇÃO E INSERÇÃO RELACIONAL
