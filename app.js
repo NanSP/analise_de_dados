@@ -12,8 +12,14 @@ const thead = document.getElementById("thead"),
   chartsPanel = document.getElementById("chartsPanel"),
   yearChart = document.getElementById("yearChart"),
   authorChart = document.getElementById("authorChart"),
+  keywordChart = document.getElementById("keywordChart"),
   yearSummary = document.getElementById("yearSummary"),
-  authorSummary = document.getElementById("authorSummary");
+  authorSummary = document.getElementById("authorSummary"),
+  keywordSummary = document.getElementById("keywordSummary"),
+  totalCount = document.getElementById("totalCount"),
+  yearCount = document.getElementById("yearCount"),
+  authorCount = document.getElementById("authorCount"),
+  keywordCount = document.getElementById("keywordCount");
 const REF_SUMMARY_MAX_LENGTH = 120;
 
 function createSvgElement(name, attrs = {}) {
@@ -192,6 +198,45 @@ function renderDonutChart(svg, values, label) {
   });
 }
 
+function collectKeywords(dados) {
+  const keywords = new Map();
+  const keywordFields = [
+    "Index Keywords",
+    "Author Keywords",
+    "index_keywords",
+    "author_keywords",
+    "keywords",
+  ];
+
+  dados.forEach((item) => {
+    keywordFields.forEach((key) => {
+      const value = item?.[key];
+      if (!value || typeof value !== "string") return;
+      value
+        .split(/;|\||,/)
+        .map((kw) => kw.trim())
+        .filter(Boolean)
+        .forEach((kw) => {
+          keywords.set(kw, (keywords.get(kw) || 0) + 1);
+        });
+    });
+  });
+
+  const entries = [...keywords.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([label, value]) => ({ label, value }));
+
+  return { entries, unique: keywords.size };
+}
+
+function renderMetrics(dados, yearEntries, authorCountValue, keywordCountValue) {
+  if (totalCount) totalCount.textContent = String(dados.length);
+  if (yearCount) yearCount.textContent = String(yearEntries.length);
+  if (authorCount) authorCount.textContent = String(authorCountValue);
+  if (keywordCount) keywordCount.textContent = String(keywordCountValue);
+}
+
 function renderCharts(dados) {
   if (!chartsPanel) return;
   if (!dados || !dados.length) {
@@ -237,6 +282,9 @@ function renderCharts(dados) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([label, value]) => ({ label, value }));
+  const keywordData = collectKeywords(dados);
+
+  renderMetrics(dados, yearEntries, authors.size, keywordData.unique);
 
   if (yearEntries.length > 0) {
     renderBarChart(yearChart, yearEntries, "Artigos por ano");
@@ -252,6 +300,14 @@ function renderCharts(dados) {
   } else {
     renderDonutChart(authorChart, [], "Top autores");
     if (authorSummary) authorSummary.textContent = "Sem autores";
+  }
+
+  if (keywordData.entries.length > 0) {
+    renderDonutChart(keywordChart, keywordData.entries, "Top keywords");
+    if (keywordSummary) keywordSummary.textContent = `${keywordData.entries.length} termos`;
+  } else {
+    renderDonutChart(keywordChart, [], "Top keywords");
+    if (keywordSummary) keywordSummary.textContent = "Sem keywords";
   }
 }
 
