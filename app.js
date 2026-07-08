@@ -171,9 +171,23 @@ async function getKeywordEntriesFromRelations(dados) {
     .map(([label, value]) => ({ label, value }));
 }
 
-function renderBarChart(svg, values, label) {
+function renderBarChart(svg, values, label, backgroundColor = null) {
   if (!svg) return;
   svg.innerHTML = "";
+  // desenhar fundo colorido se fornecido
+  if (backgroundColor) {
+    const width = 420;
+    const height = 220;
+    const bg = createSvgElement("rect", {
+      x: "0",
+      y: "0",
+      width: String(width),
+      height: String(height),
+      fill: backgroundColor,
+      rx: "8",
+    });
+    svg.appendChild(bg);
+  }
   if (!values || values.length === 0) {
     const text = createSvgElement("text", {
       x: "210",
@@ -325,9 +339,23 @@ function renderBarChart(svg, values, label) {
   svg.appendChild(title);
 }
 
-function renderDonutChart(svg, values, label) {
+function renderDonutChart(svg, values, label, backgroundColor = null) {
   if (!svg) return;
   svg.innerHTML = "";
+  // desenhar fundo colorido se fornecido
+  if (backgroundColor) {
+    const width = 420;
+    const height = 220;
+    const bg = createSvgElement("rect", {
+      x: "0",
+      y: "0",
+      width: String(width),
+      height: String(height),
+      fill: backgroundColor,
+      rx: "8",
+    });
+    svg.appendChild(bg);
+  }
   if (!values || values.length === 0) {
     const text = createSvgElement("text", {
       x: "210",
@@ -666,53 +694,58 @@ async function renderCharts(dados) {
   renderMetrics(dados, yearEntries, authorCountValue, keywordCountValue);
 
   if (yearEntries.length > 0) {
-    renderBarChart(yearChart, yearEntries, "Artigos por ano");
+    renderBarChart(yearChart, yearEntries, "Artigos por ano", "#dbeafe");
     if (yearSummary) yearSummary.textContent = `${yearEntries.length} períodos`;
   } else {
-    renderBarChart(yearChart, [], "Artigos por ano");
+    renderBarChart(yearChart, [], "Artigos por ano", "#dbeafe");
     if (yearSummary) yearSummary.textContent = "Sem ano";
   }
 
   if (authorEntries.length > 0) {
-    renderDonutChart(authorChart, authorEntries, "Top autores");
+    renderDonutChart(authorChart, authorEntries, "Top autores", "#e9d5ff");
     if (authorSummary)
       authorSummary.textContent = `${authorEntries.length} nomes`;
   } else {
-    renderDonutChart(authorChart, [], "Top autores");
+    renderDonutChart(authorChart, [], "Top autores", "#e9d5ff");
     if (authorSummary) authorSummary.textContent = "Sem autores";
   }
 
   if (keywordData.entries.length > 0) {
-    renderBarChart(keywordChart, keywordData.entries, "Top keywords");
+    renderBarChart(
+      keywordChart,
+      keywordData.entries,
+      "Top keywords",
+      "#fef3c7",
+    );
     if (keywordSummary)
       keywordSummary.textContent = `${keywordData.entries.length} termos`;
   } else {
-    renderBarChart(keywordChart, [], "Top keywords");
+    renderBarChart(keywordChart, [], "Top keywords", "#fef3c7");
     if (keywordSummary) keywordSummary.textContent = "Sem keywords";
   }
 
   if (journalEntries.length > 0) {
-    renderBarChart(journalChart, journalEntries, "Top revistas");
+    renderBarChart(journalChart, journalEntries, "Top revistas", "#dcfce7");
     if (journalSummary)
       journalSummary.textContent = `${journalEntries.length} revistas`;
   } else {
-    renderBarChart(journalChart, [], "Top revistas");
+    renderBarChart(journalChart, [], "Top revistas", "#dcfce7");
     if (journalSummary) journalSummary.textContent = "Sem revistas";
   }
 
   if (typeEntries.length > 0) {
-    renderDonutChart(typeChart, typeEntries, "Tipos de documento");
+    renderDonutChart(typeChart, typeEntries, "Tipos de documento", "#fbcfe8");
     if (typeSummary) typeSummary.textContent = `${typeEntries.length} tipos`;
   } else {
-    renderDonutChart(typeChart, [], "Tipos de documento");
+    renderDonutChart(typeChart, [], "Tipos de documento", "#fbcfe8");
     if (typeSummary) typeSummary.textContent = "Sem tipos";
   }
 
   if (doiEntries.length > 0) {
-    renderBarChart(doiChart, doiEntries, "Presença de DOI");
+    renderBarChart(doiChart, doiEntries, "Presença de DOI", "#cffafe");
     if (doiSummary) doiSummary.textContent = `${doiEntries.length} categorias`;
   } else {
-    renderBarChart(doiChart, [], "Presença de DOI");
+    renderBarChart(doiChart, [], "Presença de DOI", "#cffafe");
     if (doiSummary) doiSummary.textContent = "Sem dados";
   }
 }
